@@ -1,2 +1,6 @@
 tmp.*
 TMP.*
+*.OBJ
+*.MAP
+*.EXE
+*.TR
