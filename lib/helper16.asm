@@ -5,6 +5,29 @@ FALSE equ -1
 
 CODESEG
 
+macro lseek
+	mov ah, 42h
+	int 21h
+endm lseek
+
+macro open name
+	local NoOpenErr
+	mov ah, 3Dh
+	xor al, al
+	lea dx, name
+	int 21h
+	mov bx,ax
+	jnc NoOpenErr
+	lea dx, [ErrorMsg]
+	mov ah, 9h
+	int 21h
+	NoOpenErr:
+endm open
+
+macro close
+	mov ah,3eh
+	int 21h
+endm close
 macro memset Size, value
 	mov ax, value OR (value SHL 8)
 	shr cx,1

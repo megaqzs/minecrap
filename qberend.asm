@@ -1,9 +1,10 @@
-; asmsyntax=tasm
+; vim style select: asmsyntax=tasm
 IDEAL
 MODEL SMALL
 STACK 100h
 
 include "lib/helper16.asm"
+USE_FLOAT equ 1
 include "lib/math.asm"
 include "lib/graphics.asm"
 include "evnthand.asm"
@@ -14,23 +15,21 @@ include "lib/logging.asm"
 
 DATASEG
 
-;                (screen width or height)
-; set fov to:  ⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼
-;                       2tan(ɑ/2)
+;                        screen width or height
+; set InvFocalLen to:  ⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼
+;                              2*tan(ɑ/2)
 ; where ɑ is the field of view in the width or height (depending on what you set)
-fov dd 250.0
+InvFocalLen dd 250.0
 PlayerSpeed dd 0.02 ; blocks / frames (there are 60 frames per second)
 MouseSensetivity dd 0.001 ; 2*[MouseSensetivity] = radians / mouse movment
 
-RotConst dd 114.59155902616465
-
-CameraX dd 0.0;-3.0
+CameraX dd 0.0
 CameraY dd 0.0
 CameraZ dd 3.0
 
 ; in half radians (0 ≤ x ≤ π)
 CameraRotX dd 0.0
-CameraRotY dd 0.0;0.39269908
+CameraRotY dd 0.0
 
 ; define a cube centered around the world origin in euclidean space
 pointX dd 0.5, -0.5, 0.5, -0.5, 0.5, -0.5, 0.5, -0.5
@@ -41,8 +40,6 @@ pointCount = ($-pointX) / 4 / 3
 ; a chunk buffer
 chunkbuf db 4096 dup(0)
 
-CameraRotXSin dd ?
-CameraRotXCos dd ?
 CameraRotYSin dd ?
 CameraRotYCos dd ?
 
@@ -74,45 +71,74 @@ macro drawcursor color
 		XSetPixel color
 endm drawcursor
 
-macro blockcastloop islookingback, islookingleft
-	check_loop:
-		fadd ST(0), ST(1)
-		fist [word low fputmp]
-		cmp [word low fputmp], bx
-		jg INCcheckloop
-		DECcheckloop:
-			push ax
-			or ax,bx
-			pop ax
-			jz drawcur
+; broken for fixing later
+;proc raycast
+;		; find the z axis based slope on the x axis
+;		fdivp
+;
+;		; find the position of the player inside the block on the z axis
+;		fld [CameraZ]
+;		mov [cursor], 1*80 + 1
+;		fist [word high fputmp]
+;		mov ax, [word high fputmp]
+;
+;		fld ST(0)
+;		frndint
+;		fsubrp
+;		fadd [Half]
+;
+;
+;		; find delta x at the beginning of the block
+;		fmul ST(0), ST(1)
+;
+;		fld [CameraX]
+;
+;		fist [word low fputmp]
+;		mov bx, [word low fputmp]
+;		fsubrp
+;
+;
+;
+;		;fxch ST(1)
+;		;ftst
+;		;fstsw [word low fputmp]
+;		;fxch ST(1)
+;		;jg INCcheckloop
+;	z_check_loop:
+;		fadd ST(0), ST(1)
+;		fist [word low fputmp]
+;		x_checkloop:
+;			push ax
+;			or ax,bx
+;			pop ax
+;			jz drawcur
+;
+;			dec cx
+;			ljz dontdrawcur
+;			cmp bx, [word low fputmp]
+;			jle continue0
+;			inc bx
+;		jmp x_checkloop
+;		continue0:
+;		dec ax
+;	jmp z_check_loop
+;endp raycast
 
-			dec cx
-			ljz dontdrawcur
-			cmp bx, [word low fputmp]
-			jle continue0
-			dec bx
-		jmp DECcheckloop
-	
-		jmp dontdrawcur
-		INCcheckloop:
-			push ax
-			or ax,bx
-			pop ax
-			jz drawcur
+proc raytrace
+		;fsub [CameraY]
 
-			dec cx
-			ljz dontdrawcur
-			cmp bx, [word low fputmp]
-			jge continue0
-			dec bx
-		jmp INCcheckloop
+		fldz
+		fsub [CameraX]
 
+		fldz
+		fsub [CameraZ]
 
-		continue0:
-		dec ax
-	jmp check_loop
-endm blockcastloop
-
+		;; rotate the position with the camera's rotation
+		cmacrot [CameraRotYSin] [CameraRotYCos]
+	lineloop:
+	jmp lineloop
+	ret
+endp raytrace
 
 main:
 	mov ax, @data
@@ -151,13 +177,9 @@ main:
 	SetModeX
 	mov ax,VGASegment + 320*200/4/16
 	mov es,ax
-	finit
-	fld [fov]
 
-	fld [CameraRotX]
-	sincos halfrad
-	fstp [CameraRotXSin]
-	fstp [CameraRotXCos]
+	finit
+	fld [InvFocalLen]
 	fld [CameraRotY]
 	sincos halfrad
 	fstp [CameraRotYSin]
@@ -172,55 +194,7 @@ main:
 		WaitVSync
 		cmemset 320*200/4,0
 
-
-		; load a 2d ray
-		fld1
-		fldz
-		; rotate the ray with the camera's rotation
-		cmacrot [CameraRotYSin] [CameraRotYCos]
-
-		; find the z axis based slope on the x axis
-		fdivrp
-
-		; find the position of the player inside the block on the z axis
-		fld [CameraZ]
-		mov [cursor], 1*80 + 1
-		fld ST(0)
-		call printfloat
-		fist [word high fputmp]
-		mov ax, [word high fputmp]
-
-		fld ST(0)
-		frndint
-		fsubrp
-		fadd [Half]
-
-
-		; go to the beginning of the block on the z axis
-		fmul ST(0), ST(1)
-
-		fld [CameraX]
-		push ax bx
-		mov [cursor], 10*80 + 1
-		fld ST(0)
-		call printfloat
-		pop bx ax
-
-		fchs
-		fist [word low fputmp]
-		mov bx, [word low fputmp]
-		fsubrp
-
-
-
-		mov cx,16
-		blockcastloop
-
-		drawcur:
-			drawcursor 0fh
-		dontdrawcur:
-		fstp ST(0)
-		fstp ST(0)
+		drawcursor 0fh
 
 		; draw the object
 		i = 0
@@ -240,11 +214,6 @@ main:
 
 			;; rotate the position with the camera's rotation
 			cmacrot [CameraRotYSin] [CameraRotYCos]
-			;; exchange the x and y locations
-				fxch ST(1)
-				fxch ST(2)
-				fxch ST(1)
-			cmacrot [CameraRotXSin] [CameraRotXCos]
 
 			;; compare the z position (ST(0)) to 0 and store result in fputmp
 			ftst
@@ -254,21 +223,21 @@ main:
 			test [byte high word low fputmp], c0_mask OR c2_mask OR c3_mask 
 			jz popandnextpoint
 
-			;; do [fov]/z and replace z with the result
+			;; do [InvFocalLen]/z and replace z with the result
 			fdivr ST(0), ST(3)
 			
-			;; find the y position on screen
+			;; find the x position on screen
 			fxch ST(1)
 			fmul ST(0), ST(1)
 			fistp [word low fputmp]
-			mov dx, [word low fputmp]
-			add dx, 200/2
-
-			;; find the x position
-			fmulp
-			fistp [word low fputmp]
 			mov cx, [word low fputmp]
 			add cx, 320/2
+
+			;; find the y position
+			fmulp
+			fistp [word low fputmp]
+			mov dx, [word low fputmp]
+			add dx, 200/2
 
 			;; check if position is in display range
 			cmp cx,320
@@ -300,7 +269,7 @@ main:
 		fldpi
 		cli
 
-		fild [PointerY]
+		fild [PointerX]
 		fmul [MouseSensetivity]
 		fadd [CameraRotY]
 		fprem
@@ -311,17 +280,8 @@ main:
 		fstp [CameraRotYSin]
 		fstp [CameraRotYCos]
 
-		;fild [PointerX]
-		;fmul [MouseSensetivity]
-		;fadd [CameraRotX]
-		;fprem
-		;fst [CameraRotX]
-		;sincos halfrad
-		;fstp [CameraRotXSin]
-		;fstp [CameraRotXCos]
-
-		mov [PointerY],0
 		mov [PointerX],0
+		mov [PointerY],0
 
 		sti
 		fstp ST(0)
@@ -406,7 +366,7 @@ exit:
 	pop [word es:4*9+2] [word es:4*9]
 	sti
 
-	; remove fov from the fpu's stack
+	; remove InvFocalLen from the fpu's stack
 	fstp ST(0)
 
 	; disable mouse

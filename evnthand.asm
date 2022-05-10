@@ -1,11 +1,10 @@
 ; asmsyntax=tasm
 
 DATASEG
-lastscancode db 0ffh
-
 ; bit field of player status:
 ; [0: left, 1: right, 2: forward, 3: backward, 4: up, 5: down, 6: escape]
 kbstatus db 0000000b
+scancode db 0ffh
 
 PointerX dw 0
 PointerY dw 0
@@ -23,11 +22,11 @@ proc mousehandler far
 
 	mov al, [byte bp + 12]
 	cbw
-	sub [PointerY], ax
+	sub [PointerX], ax
 
 	mov al, [byte bp + 10]
 	cbw
-	add [PointerX], ax
+	add [PointerY], ax
 
 	pop ds ax bp
 	popf
@@ -46,10 +45,10 @@ proc keyboardhandler
 	mov ds,ax
 
 	; get scancode from keyboard
-	in         al,60h 
+	in al,60h 
 
 
-	cmp al, [lastscancode]
+	cmp al, [scancode]
 	lje @@exit
 	; save importent key status
 	cmp al,1eh ; a
@@ -120,7 +119,7 @@ proc keyboardhandler
 	; escape is handled by display loop
 
 	@@storecode:
-		mov [lastscancode],al
+		mov [scancode],al
 
 	@@exit:
 	; clear pic

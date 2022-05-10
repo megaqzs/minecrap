@@ -101,10 +101,19 @@ endm WaitVSync
 
 ; di = cursor, si = character
 proc Xprintchar color
-	mov ah,1
+	mov ax,0
+	mov ah,10001b
+	xchg al,cl
+	and al,11b
+	shl ah,cl
+	xchg al,cl
+
 	index = 0
 	rept 4
+		push ax
+		and ah,1111b
 		setreg SEQUENCER_CTRL, Plane_Mask
+		pop ax
 		push di
 		mov bl, [byte ds:si + index]
 		rept 8

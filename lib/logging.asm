@@ -1,6 +1,7 @@
 ; asmsyntax=tasm
 ; copy me before the include:
-;GraphicsMode equ [graphics mode]
+; 	GraphicsMode equ [graphics mode]
+; 	USE_FLOAT equ 1
 ; set to UNCHAINED for mode x (requires graphics.asm to be included first) or BIOS for any chained/text modes
 UNCHAINED equ 0
 BIOS equ 1
@@ -102,7 +103,7 @@ proc printint
 	cmp ax,0
 	jne @@storeloop
 
-	putstackstr ret
+	putstackstr <jmp return>
 	return:
 		pop cx ax dx
 endp printint
@@ -132,9 +133,7 @@ proc printulong
 endp printulong
 
 ; print the float in ST(0)
-decimalfloat dd 10000.0
-decimalint equ 10000
-decimaldigits equ 4
+decimalfloat dd 100000.0
 proc printfloat
 	locals @@
 
@@ -146,39 +145,29 @@ proc printfloat
 		mov dx, '-'
 		printchar
 	@@nosign:
+	fsetrc rnd_floor
 
-	fmul [decimalfloat]
-	fistp [fputmp]
+	fist [fputmp]
+
 	mov ax, [word high fputmp]
 	mov bx, [word low fputmp]
-
-	xor dx,dx
-	mov cx, decimalint
-
-	div cx
-	xchg ax, bx
-	div cx
-	xchg ax, bx
-	push dx
 	call printulong
 
 	mov dx, '.'
 	printchar
 
-	pop ax
-	mov bx, 10
-	rept decimaldigits
-		xor dx,dx
-		div bx
-		push dx
-	endm
-	mov ah,2
-
-	rept decimaldigits
-		pop dx
-		add dx, '0'
-		printchar
-	endm
+	fld1
+	fxch ST(1)
+	fprem
+	fstp ST(1)
+	fmul [decimalfloat]
+	fistp [fputmp]
+	
+	mov ax, [word high fputmp]
+	mov bx, [word low fputmp]
+	call printulong
+	fsetrc rnd_near
+	ret
 endp printfloat
 
 proc _printf
