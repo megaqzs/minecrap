@@ -12,9 +12,7 @@ include "evnthand.asm"
 GraphicsMode equ 0
 include "lib/logging.asm"
 
-
 DATASEG
-
 ;                        screen width or height
 ; set InvFocalLen to:  ⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼
 ;                              2*tan(ɑ/2)
@@ -28,7 +26,6 @@ CameraY dd 0.0
 CameraZ dd 3.0
 
 ; in half radians (0 ≤ x ≤ π)
-CameraRotX dd 0.0
 CameraRotY dd 0.0
 
 ; define a cube centered around the world origin in euclidean space
@@ -37,15 +34,11 @@ pointY dd 0.5, 0.5, -0.5, -0.5, 0.5, 0.5, -0.5, -0.5
 pointZ dd 0.5, 0.5, 0.5, 0.5, -0.5, -0.5, -0.5, -0.5
 pointCount = ($-pointX) / 4 / 3
 
-; a chunk buffer
-chunkbuf db 4096 dup(0)
-
 CameraRotYSin dd ?
 CameraRotYCos dd ?
 
 ; ray position delta per 1 of the last character as an axis
 XPerZ dd ?
-YPerZ dd ?
 
 ; the vga page that is shown
 visiblepage dw VGASegment
@@ -59,86 +52,17 @@ sCenter equ sWidth*(sHeight+1)/2
 
 ; could be more efficent if needed
 macro drawcursor color
-		mov di, sCenter
+		mov di,sCenter-320
 		XSetPixel color
 		mov di, sCenter-1
 		XSetPixel color
-		mov di,sCenter+1
+		mov di, sCenter
 		XSetPixel color
-		mov di,sCenter-320
+		mov di, sCenter+1
 		XSetPixel color
 		mov di,sCenter+320
 		XSetPixel color
 endm drawcursor
-
-; broken for fixing later
-;proc raycast
-;		; find the z axis based slope on the x axis
-;		fdivp
-;
-;		; find the position of the player inside the block on the z axis
-;		fld [CameraZ]
-;		mov [cursor], 1*80 + 1
-;		fist [word high fputmp]
-;		mov ax, [word high fputmp]
-;
-;		fld ST(0)
-;		frndint
-;		fsubrp
-;		fadd [Half]
-;
-;
-;		; find delta x at the beginning of the block
-;		fmul ST(0), ST(1)
-;
-;		fld [CameraX]
-;
-;		fist [word low fputmp]
-;		mov bx, [word low fputmp]
-;		fsubrp
-;
-;
-;
-;		;fxch ST(1)
-;		;ftst
-;		;fstsw [word low fputmp]
-;		;fxch ST(1)
-;		;jg INCcheckloop
-;	z_check_loop:
-;		fadd ST(0), ST(1)
-;		fist [word low fputmp]
-;		x_checkloop:
-;			push ax
-;			or ax,bx
-;			pop ax
-;			jz drawcur
-;
-;			dec cx
-;			ljz dontdrawcur
-;			cmp bx, [word low fputmp]
-;			jle continue0
-;			inc bx
-;		jmp x_checkloop
-;		continue0:
-;		dec ax
-;	jmp z_check_loop
-;endp raycast
-
-proc raytrace
-		;fsub [CameraY]
-
-		fldz
-		fsub [CameraX]
-
-		fldz
-		fsub [CameraZ]
-
-		;; rotate the position with the camera's rotation
-		cmacrot [CameraRotYSin] [CameraRotYCos]
-	lineloop:
-	jmp lineloop
-	ret
-endp raytrace
 
 main:
 	mov ax, @data
@@ -164,18 +88,21 @@ main:
 	mov ax,0c207h
 	int 15h
 
-	; enable mouse
+	; initialize mouse
 	mov bh,01h
 	mov ax,0c200h
 	int 15h
+	mov [PointerX],0
+	mov [PointerY],0
 
 	; change to graphical mode
 	mov ax,13h
 	int 10h
+	SetModeX
 
 	; prepare for display loop
-	SetModeX
-	mov ax,VGASegment + 320*200/4/16
+	; SHR 4 is there because the address is 20 bits wide and es is 16 bits wide and at the end of the address
+	mov ax,VGASegment + 320*200/4 SHR 4
 	mov es,ax
 
 	finit
@@ -184,8 +111,6 @@ main:
 	sincos halfrad
 	fstp [CameraRotYSin]
 	fstp [CameraRotYCos]
-	mov [PointerX],0
-	mov [PointerY],0
 	cld
 
 	FrameLoop:
@@ -196,7 +121,11 @@ main:
 
 		drawcursor 0fh
 
-		; draw the object
+		; the intent of the loop below is to draw the vertecies of the cube onto the screen
+		; the way it works is by taking the vertecies as line intersections from a camera centered axis system
+		; where the lines go through (0,0) and (px, py)
+		; from there all it needs to do is to calculate the slopes of the lines in x and y in relation to z
+		; and divide them by the focal length to get the position of the pixel in the display plane
 		i = 0
 		rept pointCount
 			local popandnextpoint, nextpoint

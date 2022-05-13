@@ -41,6 +41,7 @@ HalfPI dd 1.5707963267948966 ; π/2
 Sqrt2 dd 1.4142135623730951 ; √2
 InvSqrt2 dd 0.7071067811865476 ; 1/√2
 
+Four dw 4
 Two dw 2
 Half dd 0.5
 
@@ -226,6 +227,23 @@ endm sincos
 
 macro rangered
 	local end_m
+endm rangered
+
+macro fast_sin
+	fadd [HalfPi]
+	fast_cos
+endm fast_sin
+
+; Bhaskara I's cosine approximation
+macro fast_cos angle_unit
+	local end_a, end_b
+	ifnb <angle_unit>
+		if angle_unit eq deg
+			fmul [DegToRad]
+		elseif angle_unit eq halfrad
+			fmul [Half]
+		endif
+	endif
 	;; leave a comment if you want to be bored to death with comments explaining this
 	;; and make your comment explain this because i dont want to
 	fabs
@@ -234,22 +252,10 @@ macro rangered
 	fprem
 	fstsw [word high fputmp]
 	test [byte high word high fputmp], c1_mask
-	jz end_m
+	jz end_a
 		fsub ST(0), ST(1)
-	end_m:
+	end_a:
 	fstp ST(1)
-endm rangered
-
-macro fast_sin
-	fadd [HalfPi]
-	fast_cos
-endm fast_sin
-
-Four dw 4
-; Bhaskara I's cosine approximation
-macro fast_cos
-	local end_m
-	rangered
 	;; Magic
 	fmul ST(0), ST(0)
 	fld ST(0)
@@ -259,11 +265,11 @@ macro fast_cos
 	fsubr ST(1), ST(0)
 	faddp ST(2)
 	fdivrp
-	;; the xor truth table of bit 0 and bit 1 lines up with the sign in the quadrents of cos x so...
+	;; the parity truth table of bit 0 and bit 1 lines up with the sign in the quadrents of cos x so...
 	test [byte high word high fputmp], c1_mask OR c3_mask
-	jp end_m
+	jp end_b
 		fchs
-	end_m:
+	end_b:
 endm fast_cos
 
 ; sets the round control bits in the fpu's status word to RoundingMode
