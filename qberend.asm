@@ -14,18 +14,18 @@ include "lib/logging.asm"
 
 DATASEG
 ;                        screen width or height
-; set InvFocalLen to:  ⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼
+; set FocalLen to:     ⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼
 ;                              2*tan(ɑ/2)
 ; where ɑ is the field of view in the width or height (depending on what you set)
-InvFocalLen dd 250.0
+FocalLen dd 250.0
 PlayerSpeed dd 0.02 ; blocks / frames (there are 60 frames per second)
-MouseSensetivity dd 0.001 ; 2*[MouseSensetivity] = radians / mouse movment
+MouseSensetivity dd 0.001 ; [MouseSensetivity] = half radians / mouse movment
 
 CameraX dd 0.0
 CameraY dd 0.0
 CameraZ dd 3.0
 
-; in half radians (0 ≤ x ≤ π)
+; in half radians (the pieriod is π instead of 2π)
 CameraRotY dd 0.0
 
 ; define a cube centered around the world origin in euclidean space
@@ -106,7 +106,7 @@ main:
 	mov es,ax
 
 	finit
-	fld [InvFocalLen]
+	fld [FocalLen]
 	fld [CameraRotY]
 	sincos halfrad
 	fstp [CameraRotYSin]
@@ -121,16 +121,16 @@ main:
 
 		drawcursor 0fh
 
-		; the intent of the loop below is to draw the vertecies of the cube onto the screen
+		; the intent of the loop below is to draw the vertecies of the cube onto the screen,
 		; the way it works is by taking the vertecies as line intersections from a camera centered axis system
 		; where the lines go through (0,0) and (px, py)
 		; from there all it needs to do is to calculate the slopes of the lines in x and y in relation to z
-		; and divide them by the focal length to get the position of the pixel in the display plane
+		; and multiply them by the focal length to get the position of the pixel in the display plane
 		i = 0
 		rept pointCount
 			local popandnextpoint, nextpoint
 
-			;; load the position of the pixel with the origin centered around the camera the
+			;; load the position of the vertex and translate the origin to the camera's location
 			;; the size of a float is 4 bytes
 			fld [pointY + i*4]
 			fsub [CameraY]
@@ -141,7 +141,7 @@ main:
 			fld [pointZ + i*4]
 			fsub [CameraZ]
 
-			;; rotate the position with the camera's rotation
+			;; rotate the the axis system with the camera's rotation
 			cmacrot [CameraRotYSin] [CameraRotYCos]
 
 			;; compare the z position (ST(0)) to 0 and store result in fputmp
@@ -152,7 +152,7 @@ main:
 			test [byte high word low fputmp], c0_mask OR c2_mask OR c3_mask 
 			jz popandnextpoint
 
-			;; do [InvFocalLen]/z and replace z with the result
+			;; do [FocalLen]/z and replace z with the result
 			fdivr ST(0), ST(3)
 			
 			;; find the x position on screen
@@ -168,7 +168,7 @@ main:
 			mov dx, [word low fputmp]
 			add dx, 200/2
 
-			;; check if position is in display range
+			;; check if the position is in display range
 			cmp cx,320
 			jae nextpoint
 			cmp dx,200
@@ -189,7 +189,7 @@ main:
 				fstp ST(0)
 				fstp ST(0)
 			nextpoint:
-			;; use the next point
+			;; change the next point
 			i = i + 1
 		endm
 		WaitDisplayEnable
@@ -295,7 +295,7 @@ exit:
 	pop [word es:4*9+2] [word es:4*9]
 	sti
 
-	; remove InvFocalLen from the fpu's stack
+	; remove FocalLen from the fpu's stack
 	fstp ST(0)
 
 	; disable mouse
