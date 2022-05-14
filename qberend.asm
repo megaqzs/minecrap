@@ -121,8 +121,8 @@ main:
 
 		drawcursor 0fh
 
-		; the intent of the loop below is to draw the vertecies of the cube onto the screen,
-		; the way it works is by taking the vertecies as line intersections from a camera centered axis system
+		; the intent of the loop below is to draw the vertices of the cube onto the screen,
+		; the way it works is by taking the vertices as line intersections from a camera centered axis system
 		; where the lines go through (0,0) and (px, py)
 		; from there all it needs to do is to calculate the slopes of the lines in x and y in relation to z
 		; and multiply them by the focal length to get the position of the pixel in the display plane
