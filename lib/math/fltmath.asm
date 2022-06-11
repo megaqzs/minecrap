@@ -58,6 +58,7 @@ fputmp dd ?
 CODESEG
 
 ; ST(0) = tan(ST(0)) (in radians)
+; put the 3 least significant bits of (ST(0) / π/4) into [word low fputmp] along with some garbage
 ; or fptan with range reduction and division
 ; requires one more fpu stack register
 ; changes [fputmp]
@@ -67,23 +68,23 @@ proc tan
 	; ST(0) is the current value in ST(0) and ɑ is the original value of ST(0) at the start of the procedure
 ;---- CODE ----
 
-	; store the result of comparing ɑ to zero in [word low fputmp] and replace ST(0) with |ɑ|
+	; store the result of comparing ɑ to zero in [word high fputmp] and replace ST(0) with |ɑ| in order to not deal with the sign
 	ftst
-	fstsw [word low fputmp]
+	fstsw [word high fputmp]
 	fabs
 
-	; do ST(0) % π/4 and put the lower 4 bits of (ST(0) / π/4) into [word low fputmp] (among all the things in the status word at the time)
+	; do ST(0) % π/4 and put the lower 3 bits of (ST(0) / π/4) into [word low fputmp] (among all the things in the status word at the time)
 	fld [QuarterPI]
 	fxch ST(1)
 	fprem
-	fstsw [word high fputmp]
+	fstsw [word low fputmp]
 
 	; we test the first 2 bits since the range is reduced to 0 ≤ x ≤ π/4
 	; and since this creates four quadrents in the period of tan (the period is π)
 	; tan can be called from four seperate places which represent the four diffrent quadrents of the period
-	test [byte high word high fputmp], c3_mask
+	test [byte high word low fputmp], c3_mask
 	jnz @@q1x
-		test [byte high word high fputmp], c1_mask
+		test [byte high word low fputmp], c1_mask
 		jnz @@q01
 	;if ⌊|ɑ| / π/4⌋ % 4 == 00b than
 			fxch ST(1)
@@ -91,7 +92,7 @@ proc tan
 			fptan
 			fdivp
 			; change the sign if ɑ is negative or zero (-tan(ɑ)=tan(-ɑ))
-			test [byte high word low fputmp], c0_mask OR c2_mask OR c3_mask
+			test [byte high word high fputmp], c0_mask OR c2_mask OR c3_mask
 			jnz @@changesign_ret
 			ret
 		@@q01:
@@ -100,11 +101,11 @@ proc tan
 			fptan
 			fdivrp
 			; change the sign if ɑ is negative or zero (-tan(ɑ)=tan(-ɑ))
-			test [byte high word low fputmp], c0_mask OR c2_mask OR c3_mask
+			test [byte high word high fputmp], c0_mask OR c2_mask OR c3_mask
 			jnz @@changesign_ret
 			ret
 	@@q1x:
-		test [byte high word high fputmp], c1_mask
+		test [byte high word low fputmp], c1_mask
 		jnz @@q11
 	;if ⌊|ɑ| / π/4⌋ % 4 == 10b than
 			fxch ST(1)
@@ -112,7 +113,7 @@ proc tan
 			fptan
 			fdivrp
 			; change the sign if ɑ is positive (-tan(ɑ)=tan(-ɑ))
-			test [byte high word low fputmp], c0_mask OR c2_mask OR c3_mask
+			test [byte high word high fputmp], c0_mask OR c2_mask OR c3_mask
 			jz @@changesign_ret
 			ret
 		@@q11:
@@ -121,7 +122,7 @@ proc tan
 			fptan
 			fdivp
 			; change the sign if ɑ is positive (-tan(ɑ)=tan(-ɑ))
-			test [byte high word low fputmp], c0_mask OR c2_mask OR c3_mask
+			test [byte high word high fputmp], c0_mask OR c2_mask OR c3_mask
 			jz @@changesign_ret
 			ret
 	@@changesign_ret:
@@ -294,9 +295,9 @@ endm fchgrc
 ; if we put them in the identities used by the macro as the "sin(beta)" and "cos(beta)" we get x=c*cos(ɑ + beta), y=c*sin(ɑ + beta)
 ; which is essentially rotation
 macro cmacrot sin, cos
-	;;                       (  sin(ɑ + beta) = sin(ɑ) * cos(beta) + cos(ɑ) * sin(beta), )
-	;; angle sum identities: <                                                           >
-	;;                       (  cos(ɑ + beta) = cos(ɑ) * cos(beta) - sin(ɑ) * sin(beta)  )
+	;;                       (  sin(ɑ + β) = sin(ɑ) * cos(β) + cos(ɑ) * sin(β), )
+	;; angle sum identities: <                                                  >
+	;;                       (  cos(ɑ + β) = cos(ɑ) * cos(β) - sin(ɑ) * sin(β)  )
 	fld ST(0)
 	fld ST(2)
 

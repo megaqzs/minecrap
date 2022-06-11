@@ -21,6 +21,7 @@ macro printf str, a1,a2,a3,a4,a5,a6,a7,a8,a9,a10,a11,a12,a13,a14,a15,a16
 endm printf
 
 
+; changes di, si, ax, dx
 macro putstackstr exit_code
 	local printchr, printloop
 
@@ -84,15 +85,11 @@ macro printlhex
 
 endm printlhex
 
-; prints the integer at ax
-proc printint
+; prints the unsigned integer at ax
+proc printuint
 	locals @@
+	pusha
 	mov cx, 10
-	; get the absolute value of ax and store sign in dx
-	cwd
-	xor ax, dx
-	sub ax, dx
-
 	push 0
 
 	@@storeloop:
@@ -103,9 +100,40 @@ proc printint
 	cmp ax,0
 	jne @@storeloop
 
-	putstackstr <jmp return>
-	return:
-		pop cx ax dx
+	putstackstr <jmp @@return>
+	@@return:
+		popa
+		ret
+endp printuint
+
+; prints the integer at ax
+proc printint
+	locals @@
+	pusha
+	mov cx, 10
+	push 0
+	; get the absolute value of ax and store sign in dx
+	cwd
+	xor ax, dx
+	sub ax, dx
+	mov bx, dx
+
+	@@storeloop:
+		xor dx,dx
+		div cx
+		add dx, '0'
+		push dx
+	cmp ax,0
+	jne @@storeloop
+
+	or bx,bx
+	jns @@nosign
+		push '-'
+	@@nosign:
+	putstackstr <jmp @@return>
+	@@return:
+		popa
+		ret
 endp printint
 
 
@@ -136,6 +164,7 @@ endp printulong
 decimalfloat dd 100000.0
 proc printfloat
 	locals @@
+	pusha
 
 	ftst
 	fstsw [word low fputmp]
@@ -165,8 +194,24 @@ proc printfloat
 	
 	mov ax, [word high fputmp]
 	mov bx, [word low fputmp]
-	call printulong
 	fsetrc rnd_near
+	mov cx, 10
+	push 0
+
+	rept 5
+		xor dx,dx
+		div cx
+		xchg ax, bx
+		div cx
+		xchg ax, bx
+
+		add dx, '0'
+		push dx
+	endm
+
+	putstackstr <jmp @@exit>
+	@@exit:
+	popa
 	ret
 endp printfloat
 

@@ -1,6 +1,7 @@
 ; vim style select: asmsyntax=tasm
 IDEAL
 MODEL SMALL
+P286
 STACK 100h
 
 include "lib/helper16.asm"
@@ -18,39 +19,61 @@ DATASEG
 ;                              2*tan(ɑ/2)
 ; where ɑ is the field of view in the width or height (depending on what you set)
 FocalLen dd 250.0
-PlayerSpeed dd 0.02 ; blocks / frames (there are 60 frames per second)
+WallHalfHeight dd 0.25
+PlayerSpeed dd 0.08 ; blocks / frames (there are 60 frames per second)
 MouseSensetivity dd 0.001 ; [MouseSensetivity] = half radians / mouse movment
 
-CameraX dd 0.0
-CameraY dd 0.0
+map \
+db 20h, 20h, 20h, 20h, 20h, 20h, 20h, 27h, 27h, 20h, 20h, 20h, 20h, 20h, 20h, 20h
+db 20h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 20h
+db 20h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 20h
+db 20h, 00h, 00h, 30h, 30h, 00h, 00h, 00h, 00h, 00h, 00h, 30h, 30h, 00h, 00h, 20h
+db 20h, 00h, 00h, 30h, 30h, 00h, 00h, 00h, 00h, 00h, 00h, 30h, 30h, 00h, 00h, 20h
+db 20h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 20h
+db 20h, 00h, 00h, 00h, 00h, 00h, 34h, 34h, 34h, 34h, 00h, 00h, 00h, 00h, 00h, 20h
+db 20h, 00h, 00h, 00h, 00h, 00h, 34h, 00h, 00h, 34h, 00h, 00h, 00h, 00h, 00h, 20h
+db 20h, 00h, 00h, 00h, 00h, 00h, 34h, 00h, 00h, 34h, 00h, 00h, 00h, 00h, 00h, 20h
+db 20h, 00h, 00h, 00h, 00h, 00h, 34h, 00h, 00h, 34h, 00h, 00h, 00h, 00h, 00h, 20h
+db 20h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 20h
+db 20h, 00h, 00h, 30h, 30h, 00h, 00h, 00h, 00h, 00h, 00h, 30h, 30h, 00h, 00h, 20h
+db 20h, 00h, 00h, 30h, 30h, 00h, 00h, 00h, 00h, 00h, 00h, 30h, 30h, 00h, 00h, 20h
+db 20h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 20h
+db 20h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 20h
+db 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h
+
+CameraX dd 7.5
 CameraZ dd 3.0
 
 ; in half radians (the pieriod is π instead of 2π)
 CameraRotY dd 0.0
-
-; define a cube centered around the world origin in euclidean space
-pointX dd 0.5, -0.5, 0.5, -0.5, 0.5, -0.5, 0.5, -0.5
-pointY dd 0.5, 0.5, -0.5, -0.5, 0.5, 0.5, -0.5, -0.5
-pointZ dd 0.5, 0.5, 0.5, 0.5, -0.5, -0.5, -0.5, -0.5
-pointCount = ($-pointX) / 4 / 3
+HalfHeight dd 0.5
 
 CameraRotYSin dd ?
 CameraRotYCos dd ?
 
-; ray position delta per 1 of the last character as an axis
-XPerZ dd ?
+; an array of the slopes of the rays that are representing columns
+SlopeTable dd 320 dup(?)
+; an array of the directions of the rays from before
+DirTable db 320 dup(0)
 
 ; the vga page that is shown
 visiblepage dw VGASegment
 
-fontinit
+MapWidth dw 16
+PrintPath db 0
 
+
+fontinit
 CODESEG
+
+include "cast.asm"
+include "draw.asm"
+
 sWidth equ 320
 sHeight equ 200
 sCenter equ sWidth*(sHeight+1)/2
 
-; could be more efficent if needed
+; could be optimized
 macro drawcursor color
 		mov di,sCenter-320
 		XSetPixel color
@@ -64,6 +87,39 @@ macro drawcursor color
 		XSetPixel color
 endm drawcursor
 
+; ST(0) = z, ST(1) = x, ST(2) = focal length
+macro GetColumnHeight DestReg
+	local exit_m, mult
+	; TODO implement z axis rotation instead of this stupidity
+	fstp ST(1)
+	fsub [CameraZ]
+	fchs
+
+	; do [FocalLen]*WallHeight/z
+	;fdivr ST(0), ST(1) ; [FocalLen]*WallHeight is in ST(1)
+	fdivr [FocalLen]
+	fistp [word low fputmp]
+
+	mov DestReg,[word low fputmp]
+	cmp DestReg,200/2-1
+	jb mult
+		mov DestReg,320*(200/2-1)
+		jmp exit_m
+	mult:
+	; DestReg = height * 320
+	shl DestReg,2
+	add DestReg,[word low fputmp]
+	shl DestReg,6
+	exit_m:
+endm GetColumnHeight
+
+; logging calls
+
+fld ST(0)
+mov [cursor], 161+800*0
+call printfloat
+
+
 main:
 	mov ax, @data
 	mov ds,ax
@@ -73,11 +129,9 @@ main:
 	mov es,ax
 	cli
 	push [word es:4*9] [word es:4*9+2]
-
 	mov [word es:4*9+2], seg keyboardhandler
 	mov [word es:4*9], offset keyboardhandler
 	sti
-	; end changing
 
 	; store mouse handler segment in es
 	mov ax,seg mousehandler
@@ -107,6 +161,25 @@ main:
 
 	finit
 	fld [FocalLen]
+
+	; initialize slope table
+	mov bx,160*4
+	mov cx,-160
+	SlopeLoop:
+		sub bx,4
+		inc cx
+		mov [word low fputmp],cx
+		fild [word low fputmp]
+		fdiv ST(0),ST(1)
+		fstp [fputmp]
+		mov ax,[word low fputmp]
+		mov [word SlopeTable + bx + 160 * 4], ax
+		mov ax, [word high fputmp]
+		mov [word SlopeTable + bx + 160 * 4 + 2], ax
+	cmp bx,-160*4
+	jne SLopeLoop
+	fmul [WallHalfHeight]
+
 	fld [CameraRotY]
 	sincos halfrad
 	fstp [CameraRotYSin]
@@ -117,103 +190,51 @@ main:
 		setreg SEQUENCER_CTRL, Plane_Mask, 1111b
 		xor di,di
 		WaitVSync
-		cmemset 320*200/4,0
+		cmemset 320*200/4/2,09h
+		cmemset 320*200/4/2,00h
 
-		drawcursor 0fh
+		mov dx,1
+		mov bx,320*4
+		mov di, 200 * 320 / 2
+		CastLoop:
+		dec di
+		sub bx,4
+		mov cx,[word high SlopeTable + bx]
+		xor cx,dx
+		jns SignIsDiffrent
+			neg dx ; make sure the sign is diffrent
+		SignIsDiffrent:
+		pusha
+			fld [SlopeTable + bx]
+			call CastRay
+			GetColumnHeight bx
+			XDrawColumn cl,bx ; can be used as picture index instead
+		popa
+		or bx,bx
+		jnz CastLoop
 
-		; the intent of the loop below is to draw the vertices of the cube onto the screen,
-		; the way it works is by taking the vertices as line intersections from a camera centered axis system
-		; where the lines go through (0,0) and (px, py)
-		; from there all it needs to do is to calculate the slopes of the lines in x and y in relation to z
-		; and multiply them by the focal length to get the position of the pixel in the display plane
-		i = 0
-		rept pointCount
-			local popandnextpoint, nextpoint
+		;drawcursor 0fh
 
-			;; load the position of the vertex and translate the origin to the camera's location
-			;; the size of a float is 4 bytes
-			fld [pointY + i*4]
-			fsub [CameraY]
-
-			fld [pointX + i*4]
-			fsub [CameraX]
-
-			fld [pointZ + i*4]
-			fsub [CameraZ]
-
-			;; rotate the the axis system with the camera's rotation
-			cmacrot [CameraRotYSin] [CameraRotYCos]
-
-			;; compare the z position (ST(0)) to 0 and store result in fputmp
-			ftst
-			fstsw [word low fputmp]
-
-			;; jump to the next point if this point is behind the camera (ST(0) <= 0)
-			test [byte high word low fputmp], c0_mask OR c2_mask OR c3_mask 
-			jz popandnextpoint
-
-			;; do [FocalLen]/z and replace z with the result
-			fdivr ST(0), ST(3)
-			
-			;; find the x position on screen
-			fxch ST(1)
-			fmul ST(0), ST(1)
-			fistp [word low fputmp]
-			mov cx, [word low fputmp]
-			add cx, 320/2
-
-			;; find the y position
-			fmulp
-			fistp [word low fputmp]
-			mov dx, [word low fputmp]
-			add dx, 200/2
-
-			;; check if the position is in display range
-			cmp cx,320
-			jae nextpoint
-			cmp dx,200
-			jae nextpoint
-
-			;; dx * 320 ➔ di
-			mov di,dx
-			shl di,2
-			add di,dx
-			shl di,6
-			
-			add di,cx
-			XSetPixel 0fh
-			jmp nextpoint
-
-			popandnextpoint:
-				fstp ST(0)
-				fstp ST(0)
-				fstp ST(0)
-			nextpoint:
-			;; change the next point
-			i = i + 1
-		endm
 		WaitDisplayEnable
 		flippage [visiblepage]
 
 		fldpi
 		cli
-
 		fild [PointerX]
+		mov [PointerX],0
+		sti
+
 		fmul [MouseSensetivity]
 		fadd [CameraRotY]
 		fprem
 		fadd ST(0), ST(1)
 		fprem
+		fstp ST(1)
 		fst [CameraRotY]
+
 		sincos halfrad
 		fstp [CameraRotYSin]
 		fstp [CameraRotYCos]
-
-		mov [PointerX],0
-		mov [PointerY],0
-
-		sti
-		fstp ST(0)
 
 		; check for events
 		mov al, [kbstatus]
@@ -267,22 +288,8 @@ main:
 		fadd [CameraZ]
 		fstp [CameraZ]
 
-		; deal with the y axis (dont rotate since there is no rotation on y axis)
-		shr al,1
-		jnc case5
-			fld [CameraY]
-			fadd [PlayerSpeed]
-			fstp [CameraY]
-		case5:
-		shr al,1
-		jnc case6
-			fld [CameraY]
-			fsub [PlayerSpeed]
-			fstp [CameraY]
-		; exit if escape is pressed
-		case6:
-			shr al,1
-			jc exit
+		shr al,3
+		jc exit
 		continue:
 			jmp FrameLoop
 exit:

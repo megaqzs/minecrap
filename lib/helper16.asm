@@ -28,6 +28,7 @@ macro close
 	mov ah,3eh
 	int 21h
 endm close
+
 macro memset Size, value
 	mov ax, value OR (value SHL 8)
 	shr cx,1
