@@ -1,6 +1,11 @@
 ; vim style select: asmsyntax=tasm
+ClippingDistance equ 50 ; the number of block checks before we give up on rendering the column
+
+; jump to IfDoesntExists if the block at bx is empty
+; or to SafeExit if the loop exceeded the limit number of iterations
 macro CmpBlock IfDoesntExists, SafeExit
 	local NoSafeExit
+	dec cx ; make sure this isn't infinite
 	jnz NoSafeExit ; safely exit if the ray is to long
 		jmp SafeExit ; safely exit if the ray is to long
 	NoSafeExit:
@@ -25,13 +30,13 @@ proc CastRay
 	; the rounding mode is nearest meanning
 	; this is the negative of the position in the block relative to the center on the z axis
 	fisub [word low fputmp]
-	fadd [Half] ; fix me later
+	fadd [Half] ; TODO swap sign based on slope direction
 
 	fmul ST(0), ST(1) ; st(1) is the slope so this turns st(0) to the distance
 
 	mov bx,[word low fputmp] ; the cameras z from before
-	shl bx,4 ; the map is sixteen blocks wide and log2(16) = 4
-	; which means this multiplies bx by 16
+	shl bx,5 ; the map is sixteen blocks wide and log2(32) = 5
+	; which means this multiplies bx by 32
 
 	fld [CameraX]
 	fist [word low fputmp]
@@ -45,23 +50,22 @@ proc CastRay
 
 	sub ax,[word low fputmp]
 	neg ax
-	mov cx,26
-	mov [word high fputmp],-16
+	mov cx,80
+	mov [word high fputmp],-32 ; TODO change sign if ray direction
 	jmp @@RayTest
 	@@ZLoop:
-		add bx, [word high fputmp] ; TODO change sign if ray direction
-		dec cl ; make sure this isn't infinite
+		add bx, [word high fputmp]
 		; the block below is executed if the ray collided on the z axis
 		CmpBlock @@NotCollidingOnZ, @@SafeExit
 			fstp ST(1) ; we dont need the slope any more
 			; find the x of the collision
 			mov [word low fputmp],bx
-			and [word low fputmp],1111b ; [word low fputmp] = bx % 16 or block x
+			and [word low fputmp],11111b ; [word low fputmp] = bx % 32 or block x
 			fiadd [word low fputmp] ; add it to the in block x
 
 			; find the z of the collision
 			mov [word low fputmp],bx
-			shr [word low fputmp],4 ; [word low fputmp] = bx / 16 or block z
+			shr [word low fputmp],5 ; [word low fputmp] = bx / 32 or block z
 			fild [word low fputmp]
 			fadd [Half] ; fix me later
 			ret
@@ -81,15 +85,12 @@ proc CastRay
 			add bx,dx
 
 			@@RayTest:
-			dec cl ; make sure this isn't infinite
-			jz @@SafeExit ; safely exit if the ray is to long
-
 			; the block below is executed if the ray collided on the x axis
 			CmpBlock @@XLoop, @@SafeExit
 				fstp ST(0)
 				; find the x of the collision
 				mov [word low fputmp],bx
-				and [word low fputmp],1111b ; [word low fputmp] = bx % 16 or block x
+				and [word low fputmp],11111b ; [word low fputmp] = bx % 32 or block x
 				fild [word low fputmp]
 				fld [Half]
 				; block x + dx * 0.5
