@@ -20,11 +20,11 @@ DATASEG
 ; where ɑ is the field of view in the width or height (depending on what you set)
 FocalLen dd 250.0
 WallHalfHeight dd 0.5
-PlayerSpeed dd 0.08 ; blocks / frames (there are 60 frames per second)
+PlayerSpeed dd 0.02 ; blocks / frames (there are 60 frames per second)
 MouseSensetivity dd 0.001 ; [MouseSensetivity] = half radians / mouse movment
 
-CameraX dd 7.5
-CameraZ dd 27.5
+CameraX dd 1.0
+CameraZ dd 1.0
 
 ; in half radians (the pieriod is π instead of 2π)
 CameraRotY dd 0
@@ -38,58 +38,56 @@ RotSin dd ?
 
 ; an array of the slopes of the rays that are representing columns
 SlopeTable dd 320 dup(?)
-; an array of the directions of the rays from before
+; an array of the directions of the rays from before on the z axis
 DirTable dw 320 dup(-1)
 
 ; the vga page that is shown
 visiblepage dw VGASegment
 
 map \
-db 20h, 20h, 20h, 20h, 20h, 20h, 20h, 27h, 27h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h
-db 20h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 20h
-db 20h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 20h
-db 20h, 00h, 00h, 30h, 30h, 00h, 00h, 00h, 00h, 00h, 00h, 30h, 30h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 20h
-db 20h, 00h, 00h, 30h, 30h, 00h, 00h, 00h, 00h, 00h, 00h, 30h, 30h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 20h
-db 20h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 20h
-db 20h, 00h, 00h, 00h, 00h, 00h, 34h, 34h, 34h, 34h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 20h
-db 20h, 00h, 00h, 00h, 00h, 00h, 34h, 00h, 00h, 34h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 20h
-db 20h, 00h, 00h, 00h, 00h, 00h, 34h, 00h, 00h, 34h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 20h
-db 20h, 00h, 00h, 00h, 00h, 00h, 34h, 00h, 00h, 34h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 20h
-db 20h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 20h
-db 20h, 00h, 00h, 30h, 30h, 00h, 00h, 00h, 00h, 00h, 00h, 30h, 30h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 20h
-db 20h, 00h, 00h, 30h, 30h, 00h, 00h, 00h, 00h, 00h, 00h, 30h, 30h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 20h
-db 20h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 20h
-db 20h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 20h
-db 20h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 20h
-db 20h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 20h
-db 20h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 20h
-db 20h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 20h
-db 20h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 20h
-db 20h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 20h
-db 20h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 20h
-db 20h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 20h
-db 20h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 20h
-db 20h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 20h
-db 20h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 20h
-db 20h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 20h
-db 20h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 20h
-db 20h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 20h
-db 20h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 20h
-db 20h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 20h
+db 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 27h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h
+db 20h, 00h, 20h, 00h, 20h, 00h, 20h, 20h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 20h, 00h, 00h, 00h, 00h, 00h, 20h
+db 20h, 00h, 20h, 00h, 20h, 00h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 00h, 20h, 00h, 20h, 00h, 20h, 00h, 20h
+db 20h, 00h, 20h, 00h, 20h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 20h, 00h, 20h, 00h, 20h, 00h, 00h, 00h, 00h, 00h, 20h
+db 20h, 00h, 20h, 00h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 00h, 20h, 00h, 20h, 00h, 20h, 00h, 20h, 00h, 20h, 00h, 20h
+db 20h, 00h, 20h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 20h, 20h, 00h, 20h, 00h, 20h, 00h, 20h, 00h, 00h, 00h, 00h, 00h, 20h
+db 20h, 00h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 00h, 20h, 20h, 00h, 20h, 00h, 20h, 00h, 20h, 20h, 20h, 20h, 20h, 00h, 20h
+db 20h, 00h, 20h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 20h, 00h, 20h, 00h, 00h, 00h, 20h, 00h, 20h, 20h, 00h, 20h, 00h, 20h, 00h, 00h, 00h, 00h, 00h, 20h, 00h, 20h
+db 20h, 00h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 00h, 20h, 00h, 00h, 00h, 20h, 00h, 20h, 00h, 20h, 20h, 00h, 20h, 00h, 20h, 20h, 20h, 20h, 20h, 00h, 20h, 00h, 20h
+db 20h, 00h, 20h, 00h, 00h, 00h, 00h, 00h, 20h, 00h, 20h, 00h, 20h, 00h, 20h, 00h, 20h, 00h, 00h, 20h, 00h, 20h, 00h, 20h, 00h, 00h, 00h, 20h, 00h, 20h, 00h, 20h
+db 20h, 00h, 20h, 20h, 20h, 20h, 20h, 00h, 20h, 00h, 20h, 00h, 20h, 00h, 20h, 00h, 20h, 20h, 00h, 20h, 00h, 20h, 00h, 20h, 00h, 20h, 00h, 20h, 00h, 20h, 00h, 20h
+db 20h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 20h, 00h, 20h, 00h, 20h, 00h, 20h, 00h, 00h, 00h, 00h, 20h, 00h, 20h, 00h, 20h, 00h, 20h, 00h, 20h, 00h, 20h, 00h, 20h
+db 20h, 00h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 00h, 20h, 20h, 20h, 00h, 20h, 20h, 20h, 20h, 20h, 20h, 00h, 20h, 00h, 20h, 00h, 20h, 20h, 20h, 00h, 20h, 00h, 20h
+db 20h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 20h, 00h, 20h, 00h, 00h, 20h, 00h, 00h, 20h, 00h, 20h
+db 20h, 00h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 00h, 20h, 20h, 00h, 20h, 00h, 20h, 20h, 00h, 20h
+db 20h, 00h, 20h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 20h, 00h, 00h, 20h, 00h, 20h, 20h, 00h, 20h
+db 20h, 00h, 20h, 00h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 00h, 20h, 20h, 00h, 20h, 20h, 00h, 20h
+db 20h, 00h, 20h, 00h, 20h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 20h, 00h, 00h, 00h, 00h, 00h, 20h, 00h, 00h, 00h, 20h, 00h, 20h, 20h, 00h, 20h
+db 20h, 00h, 20h, 00h, 20h, 00h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 00h, 20h, 00h, 20h, 00h, 20h, 20h, 20h, 00h, 20h, 00h, 20h, 00h, 20h, 00h, 20h, 20h, 00h, 20h
+db 20h, 00h, 20h, 00h, 20h, 00h, 20h, 00h, 20h, 00h, 00h, 00h, 20h, 00h, 20h, 00h, 20h, 00h, 20h, 00h, 20h, 00h, 20h, 00h, 20h, 20h, 20h, 00h, 00h, 20h, 00h, 20h
+db 20h, 00h, 20h, 00h, 20h, 00h, 20h, 00h, 20h, 00h, 20h, 00h, 20h, 00h, 20h, 00h, 20h, 00h, 20h, 00h, 20h, 00h, 20h, 00h, 00h, 20h, 20h, 00h, 00h, 20h, 00h, 20h
+db 20h, 00h, 20h, 00h, 20h, 00h, 20h, 00h, 20h, 00h, 20h, 20h, 20h, 00h, 20h, 00h, 20h, 00h, 20h, 00h, 20h, 00h, 20h, 20h, 00h, 20h, 20h, 20h, 00h, 20h, 00h, 20h
+db 20h, 00h, 20h, 00h, 20h, 00h, 20h, 00h, 20h, 00h, 00h, 00h, 00h, 00h, 20h, 00h, 20h, 00h, 20h, 00h, 20h, 00h, 00h, 00h, 00h, 20h, 00h, 00h, 00h, 00h, 00h, 20h
+db 20h, 00h, 20h, 00h, 20h, 00h, 20h, 00h, 20h, 20h, 20h, 20h, 20h, 00h, 20h, 00h, 20h, 00h, 20h, 00h, 20h, 00h, 20h, 20h, 20h, 20h, 00h, 20h, 20h, 20h, 20h, 20h
+db 20h, 00h, 20h, 00h, 20h, 00h, 20h, 00h, 20h, 00h, 00h, 00h, 20h, 00h, 20h, 00h, 20h, 00h, 20h, 00h, 20h, 00h, 20h, 00h, 00h, 00h, 00h, 20h, 00h, 00h, 00h, 20h
+db 20h, 00h, 20h, 00h, 20h, 00h, 20h, 00h, 20h, 20h, 20h, 00h, 20h, 00h, 20h, 00h, 20h, 00h, 20h, 00h, 20h, 00h, 20h, 00h, 20h, 20h, 20h, 20h, 00h, 20h, 20h, 20h
+db 20h, 00h, 20h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 20h, 00h, 20h, 00h, 20h, 00h, 20h, 00h, 20h, 00h, 20h, 00h, 20h, 00h, 00h, 20h, 00h, 20h, 00h, 20h
+db 20h, 00h, 20h, 00h, 20h, 20h, 20h, 00h, 20h, 20h, 20h, 20h, 20h, 00h, 20h, 00h, 20h, 00h, 20h, 00h, 20h, 00h, 20h, 00h, 20h, 00h, 00h, 20h, 00h, 20h, 00h, 20h
+db 20h, 00h, 20h, 00h, 00h, 00h, 20h, 00h, 20h, 00h, 00h, 00h, 00h, 00h, 20h, 00h, 00h, 00h, 20h, 00h, 20h, 00h, 20h, 00h, 20h, 00h, 00h, 20h, 00h, 20h, 00h, 20h
+db 20h, 00h, 20h, 20h, 20h, 20h, 20h, 00h, 20h, 20h, 20h, 20h, 20h, 00h, 20h, 20h, 20h, 20h, 20h, 00h, 20h, 00h, 20h, 00h, 20h, 20h, 20h, 20h, 00h, 20h, 00h, 20h
+db 20h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 20h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 20h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 20h
 db 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h
 
 fontinit
 CODESEG
 
 include "cast.asm"
-include "draw.asm"
 
 sWidth equ 320
 sHeight equ 200
 sCenter equ sWidth*(sHeight+1)/2
 
 ; could be optimized
-
 macro drawcursor color
 		mov di,sCenter-320
 		XSetPixel color
@@ -106,15 +104,13 @@ endm drawcursor
 ; ST(0) = z, ST(1) = x, ST(2) = focal length
 macro GetColumnHeight DestReg
 	local exit_m, mult
-	; TODO implement z axis rotation instead of this stupidity
 	fsub [CameraZ]
 	fxch ST(1)
 	fsub [CameraX]
-	fxch ST(1)
 	cmcrotz [CameraRotYSin], [CameraRotYCos]
 	fchs
 
-	; do [FocalLen]*WallHeight/z
+	; do [FocalLen]*HalfWallHeight/z
 	fdivr ST(0), ST(1) ; [FocalLen]*HalfWallHeight is in ST(1)
 	fistp [word low fputmp]
 
@@ -131,12 +127,44 @@ macro GetColumnHeight DestReg
 	exit_m:
 endm GetColumnHeight
 
+macro XDrawColumn color,HalfHeight
+	local r1, r2
+	mov ah, 1
+
+	shr di, 1
+	jnc r1
+		shl ah, 1
+	r1:
+	shr di, 1
+	jnc r2
+		shl ah, 2
+	r2:
+	setreg SEQUENCER_CTRL, Plane_Mask
+
+	shr HalfHeight,2
+	push di
+	sub di,HalfHeight
+	AboveLoop:
+		mov [byte es:di], color
+	add di,80
+	cmp di,8000
+	jb AboveLoop
+	pop di
+
+	add di,HalfHeight
+	add di,80
+	BelowLoop:
+		mov [byte es:di], color
+	sub di,80
+	cmp di,8000
+	jae BelowLoop
+endm XDrawColumn
+
 ; logging calls
 
 ;fld ST(0)
 ;mov [cursor], 161+800*0
 ;call printfloat
-
 
 main:
 	mov ax, @data
@@ -338,22 +366,24 @@ main:
 		fld [CameraZ]
 		fistp [word low fputmp]
 		mov bx,[word low fputmp]
-		shl bx,5
+		shl bx,5 ; bx = z * mapwidth
 		fist [word low fputmp]
 		add bx,[word low fputmp]
 		cmp [map+bx],0
 		jne XCollision
-
 		fst [CameraX]
 
 		XCollision:
 		fstp ST(0)
+		cmp [map+bx],27h
+		je exit
+
 
 		fadd [CameraZ]
 
 		fist [word low fputmp]
 		mov bx,[word low fputmp]
-		shl bx,5
+		shl bx,5 ; bx = z * mapwidth
 		fld [CameraX]
 		fistp [word low fputmp]
 		add bx,[word low fputmp]
@@ -363,6 +393,8 @@ main:
 		fst [CameraZ]
 		ZCollision:
 		fstp ST(0)
+		cmp [map+bx],27h
+		je exit
 
 		shr al,3
 		jc exit

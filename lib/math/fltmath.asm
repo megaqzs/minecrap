@@ -313,12 +313,11 @@ macro cmacrot sin, cos
 	fsubrp
 endm cmacrot
 
-; get the inversely rotated z location from z in ST(0) and x in ST(1) and sin,cos of the angle in the arguments
+; get the inversely rotated z location from x in ST(0) and z in ST(1) and sin,cos of the angle in the arguments
 macro cmcrotz sin,cos
 	;; angle diffrence identitiy: sin(ɑ - β) = sin(ɑ) * cos(β) - cos(ɑ) * sin(β)
-	fmul cos
-	fxch ST(1)
 	fmul sin
-	fsubp
+	fxch ST(1)
+	fmul cos
+	fsubrp
 endm cmcrotz
-
