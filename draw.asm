@@ -25,6 +25,7 @@ macro XDrawColumn color,HalfHeight
 	pop di
 
 	add di,HalfHeight
+	add di,80
 	BelowLoop:
 		mov [byte es:di], color
 	sub di,80

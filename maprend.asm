@@ -10,8 +10,8 @@ include "lib/math.asm"
 include "lib/graphics.asm"
 include "evnthand.asm"
 
-GraphicsMode equ 0
-include "lib/logging.asm"
+;GraphicsMode=0
+;include "lib/logging.asm"
 
 DATASEG
 ;                        screen width or height
@@ -22,6 +22,27 @@ FocalLen dd 250.0
 WallHalfHeight dd 0.25
 PlayerSpeed dd 0.08 ; blocks / frames (there are 60 frames per second)
 MouseSensetivity dd 0.001 ; [MouseSensetivity] = half radians / mouse movment
+
+CameraX dd 7.5
+CameraZ dd 27.5
+
+; in half radians (the pieriod is π instead of 2π)
+CameraRotY dd 0
+HalfHeight dd 0.5
+
+CameraRotYSin dd ?
+CameraRotYCos dd ?
+
+RotCos dd ?
+RotSin dd ?
+
+; an array of the slopes of the rays that are representing columns
+SlopeTable dd 320 dup(?)
+; an array of the directions of the rays from before
+DirTable dw 320 dup(-1)
+
+; the vga page that is shown
+visiblepage dw VGASegment
 
 map \
 db 20h, 20h, 20h, 20h, 20h, 20h, 20h, 27h, 27h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h
@@ -57,28 +78,6 @@ db 20h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00
 db 20h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 20h
 db 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h
 
-CameraX dd 7.5
-CameraZ dd 3.0
-
-; in half radians (the pieriod is π instead of 2π)
-CameraRotY dd 0.0
-HalfHeight dd 0.5
-
-CameraRotYSin dd ?
-CameraRotYCos dd ?
-
-; an array of the slopes of the rays that are representing columns
-SlopeTable dd 320 dup(?)
-; an array of the directions of the rays from before
-DirTable db 320 dup(0)
-
-; the vga page that is shown
-visiblepage dw VGASegment
-
-MapWidth dw 32
-PrintPath db 0
-
-
 fontinit
 CODESEG
 
@@ -90,6 +89,7 @@ sHeight equ 200
 sCenter equ sWidth*(sHeight+1)/2
 
 ; could be optimized
+
 macro drawcursor color
 		mov di,sCenter-320
 		XSetPixel color
@@ -107,8 +107,11 @@ endm drawcursor
 macro GetColumnHeight DestReg
 	local exit_m, mult
 	; TODO implement z axis rotation instead of this stupidity
-	fstp ST(1)
 	fsub [CameraZ]
+	fxch ST(1)
+	fsub [CameraX]
+	fxch ST(1)
+	cmcrotz [CameraRotYSin], [CameraRotYCos]
 	fchs
 
 	; do [FocalLen]*WallHeight/z
@@ -131,9 +134,9 @@ endm GetColumnHeight
 
 ; logging calls
 
-fld ST(0)
-mov [cursor], 161+800*0
-call printfloat
+;fld ST(0)
+;mov [cursor], 161+800*0
+;call printfloat
 
 
 main:
@@ -189,9 +192,9 @@ main:
 		fdiv ST(0),ST(1)
 		fstp [fputmp]
 		mov ax,[word low fputmp]
-		mov [word SlopeTable + bx + 160 * 4], ax
+		mov [word low SlopeTable + bx + 160 * 4], ax
 		mov ax, [word high fputmp]
-		mov [word SlopeTable + bx + 160 * 4 + 2], ax
+		mov [word high SlopeTable + bx + 160 * 4], ax
 	cmp bx,-160*4
 	jne SLopeLoop
 	fmul [WallHalfHeight]
@@ -206,8 +209,8 @@ main:
 		setreg SEQUENCER_CTRL, Plane_Mask, 1111b
 		xor di,di
 		WaitVSync
-		;cmemset 320*200/4/2,09h
-		cmemset 320*200/4,00h
+		cmemset 320*200/4/2,09h
+		cmemset 320*200/4/2,00h
 
 		mov dx,1
 		mov bx,320*4
@@ -222,36 +225,68 @@ main:
 		SignIsDiffrent:
 		pusha
 			fld [SlopeTable + bx]
+			shr bx,1 ; the size of a word is half of the size of a double
+			mov bx,[DirTable + bx]
 			call CastRay
 			GetColumnHeight bx
-			;XSetPixel cl
-			XDrawColumn cl,bx ; can be used as picture index instead
+			XDrawColumn cl,bx ; cl can be used as index in a texture atlas instead
 		popa
 		or bx,bx
-		jnz CastLoop
-
-		;drawcursor 0fh
+		jz break
+			jmp CastLoop
+		break:
 
 		WaitDisplayEnable
 		flippage [visiblepage]
 
-		fldpi
 		cli
-		fild [PointerX]
+		mov ax,[PointerX]
 		mov [PointerX],0
+		cmp ax,0
 		sti
+		jne RotateCam
+			jmp NoRot
+		RotateCam:
+			mov [word low fputmp],ax
+			fild [word low fputmp]
+			fmul [MouseSensetivity]
+			sincos halfrad
+			fstp [RotSin]
+			fstp [RotCos]
 
-		fmul [MouseSensetivity]
-		fadd [CameraRotY]
-		fprem
-		fadd ST(0), ST(1)
-		fprem
-		fstp ST(1)
-		fst [CameraRotY]
+			; rotate the camera's slope table and direction table
+			mov di,319*4
+			mov si,319*2
+			RotLoop:
+				fild [DirTable + si]
+				fld [SlopeTable + di]
 
-		sincos halfrad
-		fstp [CameraRotYSin]
-		fstp [CameraRotYCos]
+				cmacrot [RotSin], [RotCos]
+				fxch ST(1)
+
+				fst [fputmp]
+				mov ax,[DirTable + si]
+				xor ax,[word high fputmp]
+				jns NoChange
+					neg [DirTable + si]
+				NoChange:
+
+				fabs
+				fdivp
+				fstp [SlopeTable + di]
+
+			sub si,2 ; sizeof(word) = 2
+			sub di,4 ; sizeof(float) = 4
+			or di,di ; the same as cmp bx,0
+			jge RotLoop
+
+
+			fld [CameraRotYSin]
+			fld [CameraRotYCos]
+			cmacrot [RotSin], [RotCos]
+			fstp [CameraRotYCos]
+			fstp [CameraRotYSin]
+		NoRot:
 
 		; check for events
 		mov al, [kbstatus]

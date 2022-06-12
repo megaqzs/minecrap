@@ -1,7 +1,7 @@
 ; vim style select: asmsyntax=tasm
 ClippingDistance equ 50 ; the number of block checks before we give up on rendering the column
 
-; jump to IfDoesntExists if the block at bx is empty
+; jump to IfDoesntExists if the block at si is empty
 ; or to SafeExit if the loop exceeded the limit number of iterations
 macro CmpBlock IfDoesntExists, SafeExit
 	local NoSafeExit
@@ -10,17 +10,17 @@ macro CmpBlock IfDoesntExists, SafeExit
 		jmp SafeExit ; safely exit if the ray is to long
 	NoSafeExit:
 
-	cmp [map+bx],0
+	cmp [map+si],0
 	je IfDoesntExists
 
-	mov cl, [map+bx] ; use as color for now
+	mov cl, [map+si] ; use as color for now
 endm CmpBlock
 
 
 ; why did i think this was easy
-; gets a slope in ST(0)
+; gets a slope in ST(0), and dx and bx for the x direction and z direction respectively
 ; and returns an intersection point in ST(0) for z and ST(1) for x
-; changes ax,bx,cx
+; changes ax,bx,cx,si
 proc CastRay
 	locals @@
 	; find the distance in x to the collision of the ray with the edge of the square on the z axis
@@ -30,19 +30,25 @@ proc CastRay
 	; the rounding mode is nearest meanning
 	; this is the negative of the position in the block relative to the center on the z axis
 	fisub [word low fputmp]
-	fadd [Half] ; TODO swap sign based on slope direction
+	or bx,bx ; the same as cmp bx,0
+	jg @@Positive
+		fadd [Half]
+		jmp @@EndIf
+	@@Positive:
+		fsubr [Half]
+	@@EndIf:
 
 	fmul ST(0), ST(1) ; st(1) is the slope so this turns st(0) to the distance
 
-	mov bx,[word low fputmp] ; the cameras z from before
-	shl bx,5 ; the map is sixteen blocks wide and log2(32) = 5
-	; which means this multiplies bx by 32
+	mov si,[word low fputmp] ; the cameras z from before
+	shl si,5 ; the map is sixteen blocks wide and log2(32) = 5
+	; which means this multiplies si by 32
 
 	fld [CameraX]
 	fist [word low fputmp]
 	mov ax,[word low fputmp] ; store the x in ax
-	; add the x to bx to turn it into the block index of the camera
-	add bx,ax
+	; add the x to si to turn it into the block index of the camera
+	add si,ax
 
 	faddp
 	fist [word low fputmp]
@@ -50,24 +56,30 @@ proc CastRay
 
 	sub ax,[word low fputmp]
 	neg ax
+	shl bx,5 ; bx * 32 because 32 is the map's width
 	mov cx,80
-	mov [word high fputmp],-32 ; TODO change sign if ray direction
 	jmp @@RayTest
 	@@ZLoop:
-		add bx, [word high fputmp]
+		add si,bx
 		; the block below is executed if the ray collided on the z axis
 		CmpBlock @@NotCollidingOnZ, @@SafeExit
 			fstp ST(1) ; we dont need the slope any more
 			; find the x of the collision
-			mov [word low fputmp],bx
-			and [word low fputmp],11111b ; [word low fputmp] = bx % 32 or block x
+			mov [word low fputmp],si
+			and [word low fputmp],11111b ; [word low fputmp] = si % 32 or block x
 			fiadd [word low fputmp] ; add it to the in block x
 
 			; find the z of the collision
-			mov [word low fputmp],bx
-			shr [word low fputmp],5 ; [word low fputmp] = bx / 32 or block z
+			mov [word low fputmp],si
+			shr [word low fputmp],5 ; [word low fputmp] = si / 32 or block z
 			fild [word low fputmp]
-			fadd [Half] ; fix me later
+			or bx,bx ; this means cmp bx,0
+			jl @@ZEnd2
+			; end 1
+			fsub [Half] ; TODO change sign if ray direction
+			ret
+			@@ZEnd2:
+			fadd [Half] ; TODO change sign if ray direction
 			ret
 		@@NotCollidingOnZ:
 		; find the distance to the next point on the line in ST(0)
@@ -82,15 +94,15 @@ proc CastRay
 			jz @@ZLoop
 
 			sub ax,dx
-			add bx,dx
+			add si,dx
 
 			@@RayTest:
 			; the block below is executed if the ray collided on the x axis
 			CmpBlock @@XLoop, @@SafeExit
 				fstp ST(0)
 				; find the x of the collision
-				mov [word low fputmp],bx
-				and [word low fputmp],11111b ; [word low fputmp] = bx % 32 or block x
+				mov [word low fputmp],si
+				and [word low fputmp],11111b ; [word low fputmp] = si % 32 or block x
 				fild [word low fputmp]
 				fld [Half]
 				; block x + dx * 0.5
@@ -105,9 +117,13 @@ proc CastRay
 				fld ST(1)
 				fsubr [CameraX]
 				fdivrp ; stupid division why couldn't it be multiplication
-
+				or bx,bx ; cmp bx,0 again
+				jl @@XEnd2
+				fsubr [CameraZ]
+				add cl,48h ; use darker color for x collision
+				ret
+				@@XEnd2:
 				fadd [CameraZ]
-
 				add cl,48h ; use darker color for x collision
 				ret
 		@@SafeExit: 
