@@ -19,7 +19,7 @@ DATASEG
 ;                              2*tan(ɑ/2)
 ; where ɑ is the field of view in the width or height (depending on what you set)
 FocalLen dd 250.0
-WallHalfHeight dd 0.25
+WallHalfHeight dd 0.5
 PlayerSpeed dd 0.08 ; blocks / frames (there are 60 frames per second)
 MouseSensetivity dd 0.001 ; [MouseSensetivity] = half radians / mouse movment
 
@@ -115,8 +115,7 @@ macro GetColumnHeight DestReg
 	fchs
 
 	; do [FocalLen]*WallHeight/z
-	;fdivr ST(0), ST(1) ; [FocalLen]*WallHeight is in ST(1)
-	fdivr [FocalLen]
+	fdivr ST(0), ST(1) ; [FocalLen]*HalfWallHeight is in ST(1)
 	fistp [word low fputmp]
 
 	mov DestReg,[word low fputmp]
@@ -335,10 +334,35 @@ main:
 
 		; add the velocity vector to the location (since x=x₀+v*t and we are repeatedly adding the velocity over time which is equivilant to multiplacation)
 		fadd [CameraX]
-		fstp [CameraX]
+
+		fld [CameraZ]
+		fistp [word low fputmp]
+		mov bx,[word low fputmp]
+		shl bx,5
+		fist [word low fputmp]
+		add bx,[word low fputmp]
+		cmp [map+bx],0
+		jne XCollision
+
+		fst [CameraX]
+
+		XCollision:
+		fstp ST(0)
 
 		fadd [CameraZ]
-		fstp [CameraZ]
+
+		fist [word low fputmp]
+		mov bx,[word low fputmp]
+		shl bx,5
+		fld [CameraX]
+		fistp [word low fputmp]
+		add bx,[word low fputmp]
+		cmp [map+bx],0
+		jne ZCollision
+
+		fst [CameraZ]
+		ZCollision:
+		fstp ST(0)
 
 		shr al,3
 		jc exit
