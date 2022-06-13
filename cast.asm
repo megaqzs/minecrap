@@ -13,7 +13,7 @@ macro CmpBlock IfDoesntExists, SafeExit
 	cmp [map+si],0
 	je IfDoesntExists
 
-	mov cl, [map+si] ; use as color for now
+	mov cl, [map+si]
 endm CmpBlock
 
 
@@ -56,7 +56,7 @@ proc CastRay
 
 	sub ax,[word low fputmp]
 	neg ax
-	shl bx,5 ; bx * 32 because 32 is the map's width
+	sal bx,5 ; bx * 32 because 32 is the map's width
 	mov cx,80
 	jmp @@RayTest
 	@@ZLoop:
@@ -76,10 +76,10 @@ proc CastRay
 			or bx,bx ; this means cmp bx,0
 			jl @@ZEnd2
 			; end 1
-			fsub [Half] ; TODO change sign if ray direction
+			fsub [Half]
 			ret
 			@@ZEnd2:
-			fadd [Half] ; TODO change sign if ray direction
+			fadd [Half]
 			ret
 		@@NotCollidingOnZ:
 		; find the distance to the next point on the line in ST(0)
@@ -99,18 +99,22 @@ proc CastRay
 			@@RayTest:
 			; the block below is executed if the ray collided on the x axis
 			CmpBlock @@XLoop, @@SafeExit
+				add cl,48h ; use darker color for x collision
+
 				fstp ST(0)
 				; find the x of the collision
 				mov [word low fputmp],si
 				and [word low fputmp],11111b ; [word low fputmp] = si % 32 or block x
 				fild [word low fputmp]
-				fld [Half]
 				; block x + dx * 0.5
-				or dx,dx
-				js @@neg
-					fchs
-				@@neg:
-				faddp
+				or dx,dx ; same as cmp dx,0
+				jl @@NegXDir
+					fsub [Half]
+					jmp @@endIf1
+				@@NegXDir:
+					fadd [Half]
+				@@endIf1:
+
 				fxch ST(1)
 
 				; find the z of the collision
@@ -120,11 +124,9 @@ proc CastRay
 				or bx,bx ; cmp bx,0 again
 				jl @@XEnd2
 				fsubr [CameraZ]
-				add cl,48h ; use darker color for x collision
 				ret
 				@@XEnd2:
 				fadd [CameraZ]
-				add cl,48h ; use darker color for x collision
 				ret
 		@@SafeExit: 
 		fstp ST(0)

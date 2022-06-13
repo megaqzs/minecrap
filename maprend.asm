@@ -20,6 +20,7 @@ DATASEG
 ; where ɑ is the field of view in the width or height (depending on what you set)
 FocalLen dd 250.0
 WallHalfHeight dd 0.5
+CollisionBoxHalfWidth dd 0.2 ; must be less then 0.5 because i use corners to check for collision
 PlayerSpeed dd 0.02 ; blocks / frames (there are 60 frames per second)
 MouseSensetivity dd 0.001 ; [MouseSensetivity] = half radians / mouse movment
 
@@ -165,6 +166,44 @@ endm XDrawColumn
 ;fld ST(0)
 ;mov [cursor], 161+800*0
 ;call printfloat
+
+macro GetCornerCollision x,z
+	fld [CameraX]
+	if x eq 1
+		fadd [CollisionBoxHalfWidth]
+	else
+		fsub [CollisionBoxHalfWidth]
+	endif
+	fistp [word low fputmp]
+
+	fld [CameraZ]
+	if z eq 1
+		fadd [CollisionBoxHalfWidth]
+	else
+		fsub [CollisionBoxHalfWidth]
+	endif
+	fistp [word high fputmp]
+
+	mov bx,[word high fputmp]
+	shl bx,5
+	add bx,[word low fputmp]
+endm GetCornerCollision
+
+proc RestoreIfColided
+		irp x,<1,-1>
+			irp z,<1,-1>
+				local NextCorner
+				GetCornerCollision x,z
+				cmp [map+bx],0
+				je NextCorner
+					fstp ST(0)
+					ret
+				NextCorner:
+			endm
+		endm
+		fstp ST(1)
+		ret
+endp RestoreIfColided
 
 main:
 	mov ax, @data
@@ -361,40 +400,19 @@ main:
 		cmacrot [CameraRotYSin] [CameraRotYCos]
 
 		; add the velocity vector to the location (since x=x₀+v*t and we are repeatedly adding the velocity over time which is equivilant to multiplacation)
-		fadd [CameraX]
+		fld [CameraX]
+		fadd ST(1),ST(0)
+		fxch ST(1)
+		fst [CameraX]
+		call RestoreIfColided
+		fstp [CameraX]
 
 		fld [CameraZ]
-		fistp [word low fputmp]
-		mov bx,[word low fputmp]
-		shl bx,5 ; bx = z * mapwidth
-		fist [word low fputmp]
-		add bx,[word low fputmp]
-		cmp [map+bx],0
-		jne XCollision
-		fst [CameraX]
-
-		XCollision:
-		fstp ST(0)
-		cmp [map+bx],27h
-		je exit
-
-
-		fadd [CameraZ]
-
-		fist [word low fputmp]
-		mov bx,[word low fputmp]
-		shl bx,5 ; bx = z * mapwidth
-		fld [CameraX]
-		fistp [word low fputmp]
-		add bx,[word low fputmp]
-		cmp [map+bx],0
-		jne ZCollision
-
+		fadd ST(1),ST(0)
+		fxch ST(1)
 		fst [CameraZ]
-		ZCollision:
-		fstp ST(0)
-		cmp [map+bx],27h
-		je exit
+		call RestoreIfColided
+		fstp [CameraZ]
 
 		shr al,3
 		jc exit
