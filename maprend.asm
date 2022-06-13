@@ -1,7 +1,6 @@
 ; vim style select: asmsyntax=tasm
 IDEAL
 MODEL SMALL
-P286
 STACK 100h
 
 include "lib/helper16.asm"
@@ -143,14 +142,12 @@ macro XDrawColumn color,HalfHeight
 	setreg SEQUENCER_CTRL, Plane_Mask
 
 	shr HalfHeight,2
-	push di
 	sub di,HalfHeight
 	AboveLoop:
 		mov [byte es:di], color
 	add di,80
 	cmp di,8000
 	jb AboveLoop
-	pop di
 
 	add di,HalfHeight
 	add di,80
@@ -289,14 +286,14 @@ main:
 		jns SignIsDiffrent
 			neg dx ; make sure the sign is diffrent
 		SignIsDiffrent:
-		pusha
+			push bx di dx
 			fld [SlopeTable + bx]
 			shr bx,1 ; the size of a word is half of the size of a double
 			mov bx,[DirTable + bx]
 			call CastRay
 			GetColumnHeight bx
 			XDrawColumn cl,bx ; cl can be used as index in a texture atlas instead
-		popa
+			pop dx di bx
 		or bx,bx
 		jz break
 			jmp CastLoop

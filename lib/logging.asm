@@ -88,7 +88,7 @@ endm printlhex
 ; prints the unsigned integer at ax
 proc printuint
 	locals @@
-	pusha
+	push ax cx dx di si
 	mov cx, 10
 	push 0
 
@@ -102,14 +102,14 @@ proc printuint
 
 	putstackstr <jmp @@return>
 	@@return:
-		popa
+		rpop ax cx dx di si
 		ret
 endp printuint
 
 ; prints the integer at ax
 proc printint
 	locals @@
-	pusha
+	push ax bx cx dx di si
 	mov cx, 10
 	push 0
 	; get the absolute value of ax and store sign in dx
@@ -132,7 +132,7 @@ proc printint
 	@@nosign:
 	putstackstr <jmp @@return>
 	@@return:
-		popa
+		rpop ax bx cx dx di si
 		ret
 endp printint
 
@@ -140,6 +140,7 @@ endp printint
 ; changes ax bx cx dx
 proc printulong
 	locals @@
+	push ax bx cx dx di si
 	mov cx, 10
 	push 0
 
@@ -157,14 +158,17 @@ proc printulong
 	cmp ax,0
 	jne @@storeloop
 
-	putstackstr ret
+	putstackstr <jmp @@return>
+	@@return:
+		rpop ax bx cx dx di si
+		ret
 endp printulong
 
 ; print the float in ST(0)
 decimalfloat dd 100000.0
 proc printfloat
 	locals @@
-	pusha
+	push ax bx cx dx di si
 
 	ftst
 	fstsw [word low fputmp]
@@ -211,17 +215,17 @@ proc printfloat
 
 	putstackstr <jmp @@exit>
 	@@exit:
-	popa
+	rpop ax bx cx dx di si
 	ret
 endp printfloat
 
-proc _printf
-	;local argcount:word,roundmultiple:word
-	push bp
-	mov bp, sp
-	mov di, 4
-
-	mov sp,bp
-	pop bp
-	ret
-endp _printf
+;proc _printf
+;	;local argcount:word,roundmultiple:word
+;	push bp
+;	mov bp, sp
+;	mov di, 4
+;
+;	mov sp,bp
+;	pop bp
+;	ret
+;endp _printf
