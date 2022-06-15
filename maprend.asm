@@ -4,11 +4,10 @@ MODEL SMALL
 STACK 100h
 
 include "lib/helper16.asm"
-USE_FLOAT equ 1
 include "lib/math.asm"
 include "lib/graphics.asm"
-include "evnthand.asm"
 
+; uncomment the following bit of code if you want to add logging
 ;GraphicsMode=0
 ;include "lib/logging.asm"
 
@@ -44,6 +43,15 @@ DirTable dw 320 dup(-1)
 ; the vga page that is shown
 visiblepage dw VGASegment
 
+
+; bit field of player status:
+; [0: left, 1: right, 2: forward, 3: backward, 4: up, 5: down, 6: escape]
+kbstatus db 0000000b
+scancode db 0ffh
+
+PointerX dw 0
+PointerY dw 0
+
 map \
 db 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 27h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h
 db 20h, 00h, 20h, 00h, 20h, 00h, 20h, 20h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 20h, 00h, 00h, 00h, 00h, 00h, 20h
@@ -78,9 +86,9 @@ db 20h, 00h, 20h, 20h, 20h, 20h, 20h, 00h, 20h, 20h, 20h, 20h, 20h, 00h, 20h, 20
 db 20h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 20h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 20h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 00h, 20h
 db 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h, 20h
 
-fontinit
 CODESEG
 
+include "evnthand.asm"
 include "cast.asm"
 
 sWidth equ 320
@@ -271,7 +279,6 @@ main:
 	FrameLoop:
 		setreg SEQUENCER_CTRL, Plane_Mask, 1111b
 		xor di,di
-		WaitVSync
 		cmemset 320*200/4/2,09h
 		cmemset 320*200/4/2,00h
 
@@ -294,21 +301,15 @@ main:
 			GetColumnHeight bx
 			XDrawColumn cl,bx ; cl can be used as index in a texture atlas instead
 			pop dx di bx
-		or bx,bx
-		jz break
-			jmp CastLoop
-		break:
-
-		WaitDisplayEnable
-		flippage [visiblepage]
+		or bx,bx ; same as cmp bx,0
+		ljne CastLoop
 
 		cli
 		mov ax,[PointerX]
 		mov [PointerX],0
 		cmp ax,0
 		sti
-		jne RotateCam
-			jmp NoRot
+		lje NoRot
 		RotateCam:
 			mov [word low fputmp],ax
 			fild [word low fputmp]
@@ -414,6 +415,9 @@ main:
 		shr al,3
 		jc exit
 		continue:
+			WaitDisplayEnable
+			flippage [visiblepage]
+			WaitVSync
 			jmp FrameLoop
 exit:
 	; restore keyboard handler

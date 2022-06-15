@@ -1,14 +1,5 @@
 ; asmsyntax=tasm
 
-DATASEG
-; bit field of player status:
-; [0: left, 1: right, 2: forward, 3: backward, 4: up, 5: down, 6: escape]
-kbstatus db 0000000b
-scancode db 0ffh
-
-PointerX dw 0
-PointerY dw 0
-
 CODESEG
 
 proc mousehandler far
