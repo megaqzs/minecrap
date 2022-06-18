@@ -5,7 +5,7 @@ ClippingDistance equ 50 ; the number of block checks before we give up on render
 ; or to SafeExit if the loop exceeded the limit number of iterations
 macro CmpBlock IfDoesntExists, SafeExit
 	local NoSafeExit
-	dec cx ; make sure this isn't infinite
+	dec cx ; reduce the block collision counter
 	jnz NoSafeExit ; safely exit if the ray is to long
 		jmp SafeExit ; safely exit if the ray is to long
 	NoSafeExit:
@@ -28,7 +28,7 @@ proc CastRay
 	fist [word low fputmp] ; save the cameras z for later and now
 
 	; the rounding mode is nearest meanning
-	; this is the negative of the position in the block relative to the center on the z axis
+	; this is the position in the block relative to the center on the z axis
 	fisub [word low fputmp]
 	or bx,bx ; the same as cmp bx,0
 	jg @@Positive
@@ -41,7 +41,7 @@ proc CastRay
 	fmul ST(0), ST(1) ; st(1) is the slope so this turns st(0) to the distance
 
 	mov si,[word low fputmp] ; the cameras z from before
-	shl si,5 ; the map is sixteen blocks wide and log2(32) = 5
+	sal si,5 ; the map is 32 blocks wide and log2(32) = 5
 	; which means this multiplies si by 32
 
 	fld [CameraX]
@@ -54,10 +54,12 @@ proc CastRay
 	fist [word low fputmp]
 	fisub [word low fputmp]
 
+	; loop through every block in the ray's path until we find a collision
+	; and calculate its location or until we reach the limit of attempts
 	sub ax,[word low fputmp]
 	neg ax
 	sal bx,5 ; bx * 32 because 32 is the map's width
-	mov cx,80
+	mov cx,80 ; the number of block collisions we test before giving up
 	jmp @@RayTest
 	@@ZLoop:
 		add si,bx
@@ -71,7 +73,7 @@ proc CastRay
 
 			; find the z of the collision
 			mov [word low fputmp],si
-			shr [word low fputmp],5 ; [word low fputmp] = si / 32 or block z
+			sar [word low fputmp],5 ; [word low fputmp] = si / 32 or block z
 			fild [word low fputmp]
 			or bx,bx ; this means cmp bx,0
 			jl @@ZEnd2
