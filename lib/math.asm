@@ -213,3 +213,25 @@ macro cmcrotz sin,cos
 	fmul cos
 	fsubrp
 endm cmcrotz
+
+macro imax a,b,res
+	local Bigger, end_m
+	cmp a,b
+	jg Bigger
+		mov res,b
+		jmp end_m
+	Bigger:
+		mov res,a
+	end_m:
+endm imax
+
+macro imin a,b,res
+	local Bigger, end_m
+	cmp a,b
+	jg @@Bigger
+		mov res,a
+		jmp end_m
+	@@Bigger:
+		mov res,b
+	end_m:
+endm imin

@@ -1,14 +1,14 @@
+JumpMacCreate l
+
 ; vim style select: asmsyntax=tasm
-ClippingDistance equ 50 ; the number of block checks before we give up on rendering the column
+ClippingDistance equ 64 ; the number of block checks before we give up on finding a collision
 
 ; jump to IfDoesntExists if the block at si is empty
 ; or to SafeExit if the loop exceeded the limit number of iterations
 macro CmpBlock IfDoesntExists, SafeExit
 	local NoSafeExit
 	dec cx ; reduce the block collision counter
-	jnz NoSafeExit ; safely exit if the ray is to long
-		jmp SafeExit ; safely exit if the ray is to long
-	NoSafeExit:
+	ljl SafeExit ; safely exit if the ray is to long
 
 	cmp [map+si],0
 	je IfDoesntExists
@@ -18,8 +18,8 @@ endm CmpBlock
 
 
 ; why did i think this was easy
-; gets a slope in ST(0), and dx and bx for the x direction and z direction respectively
-; and returns an intersection point in ST(0) for z and ST(1) for x
+; gets a slope in ST(0), dx and bx for the x and z directions respectively
+; and returns an intersection point in ST(0) for z and ST(1) for x and cl for the value of the block
 ; changes ax,bx,cx,si
 proc CastRay
 	locals @@
@@ -59,7 +59,7 @@ proc CastRay
 	sub ax,[word low fputmp]
 	neg ax
 	sal bx,5 ; bx * 32 because 32 is the map's width
-	mov cx,80 ; the number of block collisions we test before giving up
+	mov cx,ClippingDistance ; the number of block collisions we test before giving up
 	jmp @@RayTest
 	@@ZLoop:
 		add si,bx
@@ -92,8 +92,8 @@ proc CastRay
 		; put the distance to the current point on the x line in ax
 		mov ax, [word low fputmp]
 		@@XLoop:
-			or ax,ax ; faster than cmp ax,0 on real hardware
-			jz @@ZLoop
+			or ax,ax ; faster than cmp ax,0 on real hardware but also acts the same way
+			je @@ZLoop
 
 			sub ax,dx
 			add si,dx
@@ -101,7 +101,7 @@ proc CastRay
 			@@RayTest:
 			; the block below is executed if the ray collided on the x axis
 			CmpBlock @@XLoop, @@SafeExit
-				add cl,48h ; use darker color for x collision
+				add cl,48h ; use a darker color for x collision
 
 				fstp ST(0)
 				; find the x of the collision
@@ -133,7 +133,6 @@ proc CastRay
 		@@SafeExit: 
 		fstp ST(0)
 		fstp ST(0)
-
 		fldz
 		fldz
 		ret

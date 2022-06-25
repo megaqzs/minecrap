@@ -83,33 +83,27 @@ macro cmemcpy Size
 	:exitm
 endm cmemcpy
 
-macro ljz addr
-	local mexit
-	jnz mexit
-		jmp addr
-	mexit:
-endm ljz
+; create jump macros based on their condition code for example for je it will be e
+; however it also creates the negatives of those because it can't deal with negatives like ne
+macro JumpMacCreate c1,c2,c3,c4,c5,c6,c7,c8,c9,c10,c11,c12,c13,c14,c15,c16
+	local NegativeCondition,NPos
+	ifnb <c1>
+		macro lj&c1 addr
+			local mexit
+			jn&c1 mexit
+				jmp addr
+			mexit:
+		endm lj&c1
 
-macro ljnz addr
-	local mexit
-	jz mexit
-		jmp addr
-	mexit:
-endm ljnz
-
-macro lje addr
-	local mexit
-	jne mexit
-		jmp addr
-	mexit:
-endm lje
-
-macro ljne addr
-	local mexit
-	je mexit
-		jmp addr
-	mexit:
-endm ljne
+		macro ljn&c1 addr
+			local mexit
+			j&c1 mexit
+				jmp addr
+			mexit:
+		endm ljn&c1
+		JumpMacCreate c2,c3,c4,c5,c6,c7,c8,c9,c10,c11,c12,c13,c14,c15,c16	
+	endif
+endm JumpMacCreate
 
 macro dwrol reg1, reg2, count
 	clc

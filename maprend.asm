@@ -21,8 +21,8 @@ DATASEG
 ; where ɑ is the field of view in the width or height (depending on what you set)
 FocalLen dd 250.0
 WallHalfHeight dd 0.5
-CollisionBoxHalfWidth dd 0.2 ; must be less then 0.5 because i use corners to check for collision
-PlayerSpeed dd 0.02 ; blocks / frames (there are 60 frames per second)
+CollisionBoxHalfWidth dd 0.2 ; must be less than 0.5 because there will be gaps in the collision box above 0.5
+PlayerSpeed dd 0.1 ; blocks / frame (there are 60 frames per second if no frame is skipped)
 MouseSensetivity dd 0.001 ; [MouseSensetivity] = half radians / mouse movment
 
 CameraX dd 1.0
@@ -55,7 +55,9 @@ scancode db 0ffh
 PointerX dw 0
 PointerY dw 0
 
-; currently a maze
+; each byte is a block on the map the player is in
+; the color of the block is determined by the value of the byte in the pallete
+; this map currently contains a maze
 map \
 db 20h,20h,20h,20h,20h,20h,20h,20h,27h,20h,20h,20h,20h,20h,20h,20h,20h,20h,20h,20h,20h,20h,20h,20h,20h,20h,20h,20h,20h,20h,20h,20h; 0
 db 20h,00h,20h,00h,20h,00h,20h,20h,00h,00h,00h,00h,00h,00h,00h,00h,00h,00h,00h,00h,00h,00h,00h,00h,00h,20h,00h,00h,00h,00h,00h,20h; |
@@ -88,69 +90,62 @@ db 20h,00h,20h,00h,20h,20h,20h,00h,20h,20h,20h,20h,20h,00h,20h,00h,20h,00h,20h,0
 db 20h,00h,20h,00h,00h,00h,20h,00h,20h,00h,00h,00h,00h,00h,20h,00h,00h,00h,20h,00h,20h,00h,20h,00h,20h,00h,00h,20h,00h,20h,00h,20h; |
 db 20h,00h,20h,20h,20h,20h,20h,00h,20h,20h,20h,20h,20h,00h,20h,20h,20h,20h,20h,00h,20h,00h,20h,00h,20h,20h,20h,20h,00h,20h,00h,20h; |
 db 20h,00h,00h,00h,00h,00h,00h,00h,20h,00h,00h,00h,00h,00h,00h,00h,00h,00h,00h,00h,20h,00h,00h,00h,00h,00h,00h,00h,00h,00h,00h,20h; |
-db 20h,20h,20h,20h,20h,20h,20h,20h,20h,20h,20h,20h,20h,20h,20h,20h,20h,20h,20h,20h,20h,20h,20h,20h,20h,20h,20h,20h,20h,20h,20h,20h; |
-;   0------------------------------------------------------------X-----------------------------------------------------------------🢒🢓
+db 20h,20h,20h,20h,20h,20h,20h,20h,20h,20h,20h,20h,20h,20h,20h,20h,20h,20h,20h,20h,20h,20h,20h,20h,20h,20h,20h,20h,20h,20h,20h,20h; 31
+;   0------------------------------------------------------------X--------------------------------------------------------------31-🢒🢓
 CODESEG
 
 include "evnthand.asm"
 include "cast.asm"
 
+; create long jump macros that are needed
+JumpMacCreate e,ge
+
+; draws a column of a block on to the screen at di
+; di = column, cl = color
 ; ST(0) = z, ST(1) = x, ST(2) = focal length * half wall height
-macro GetColumnHeight DestReg
-	local exit_m, mult
+; changes bx
+proc DrawBlockColumn
+	local @@
+
+	;; find column height
 	fsub [CameraZ]
 	fxch ST(1)
 	fsub [CameraX]
 	cmcrotz [CameraRotYSin], [CameraRotYCos]
-	fchs
+	fabs
 
-	; do [FocalLen]*HalfWallHeight/z
-	fdivr ST(0), ST(1) ; [FocalLen]*HalfWallHeight is in ST(1)
+	; FocalLen is the distance between the focal point and the grid of 'pixels'
+	; and z is the distance on the camera's z between the camera and the object
+	; our goal is to find the height of the point at z = [FocalLen]
+	; on a line that intersects the origin and the point at (z,[HalfWallHeight])
+	; so we do [FocalLen]*[HalfWallHeight]/z because [HalfWallHeight]/z is the slope
+	; and [FocalLen] is the z which is the good old y = mx + b where b is zero
+	fdivr ST(0), ST(1) ;; [FocalLen]*[HalfWallHeight] is in ST(1)
 	fistp [word low fputmp]
 
-	mov DestReg,[word low fputmp]
-	cmp DestReg,sHeight/2-1
-	jb mult
-		mov DestReg,sWidth*(sHeight/2-1)
-		jmp exit_m
-	mult:
-	; DestReg = height * sWidth
-	shl DestReg,2
-	add DestReg,[word low fputmp]
-	shl DestReg,6
-	exit_m:
-endm GetColumnHeight
+	mov bx,[word low fputmp]
+	imin bx,sHeight/2,bx
+	mov [word low fputmp],bx
 
-macro XDrawColumn color,HalfHeight
-	local r1, r2
-	mov ah, 1
+	; bx *= sWidth >> 2
+	sal bx,2
+	add bx,[word low fputmp]
+	sal bx,4
 
-	shr di, 1
-	jnc r1
-		shl ah, 1
-	r1:
-	shr di, 1
-	jnc r2
-		shl ah, 2
-	r2:
-	setreg SEQUENCER_CTRL, Plane_Mask
+	sub di,bx
+	@@AboveLoop:
+		mov [byte es:di+sWidth*sHeight/2/4],cl
+		add di,80
+	jl @@AboveLoop
 
-	shr HalfHeight,2
-	sub di,HalfHeight
-	AboveLoop:
-		mov [byte es:di], color
-	add di,80
-	cmp di,8000
-	jb AboveLoop
-
-	add di,HalfHeight
-	add di,80
-	BelowLoop:
-		mov [byte es:di], color
+	add di,bx
 	sub di,80
-	cmp di,8000
-	jae BelowLoop
-endm XDrawColumn
+	@@BelowLoop:
+		mov [byte es:di+sWidth*sHeight/2/4],cl
+		sub di,80
+	jge @@BelowLoop
+	ret
+endp DrawBlockColumn
 
 macro GetCornerBlock x,z
 	fld [CameraX]
@@ -264,27 +259,38 @@ main:
 		cmemset sWidth*sHeight/2/4,09h ; fill sky with blue
 		cmemset sWidth*sHeight/2/4,00h ; fill ground with black
 
-		mov dx,1
-		mov bx,sWidth*4
-		mov di, sHeight * sWidth / 2
-		CastLoop:
-		dec di
-		sub bx,4
-		mov cx,[word high SlopeTable + bx]
-		xor cx,dx
-		jns SignIsDiffrent
-			neg dx ; make sure the sign is diffrent
-		SignIsDiffrent:
-			push bx di dx
-			fld [SlopeTable + bx]
-			shr bx,1 ; the size of a word is half of the size of a double
-			mov bx,[DirTable + bx]
-			call CastRay
-			GetColumnHeight bx
-			XDrawColumn cl,bx ; cl can be used as index in a texture atlas instead
-			pop dx di bx
-		or bx,bx ; same as cmp bx,0
-		ljne CastLoop
+		; use seperate loops for diffrent planes in order to improve efficency
+		i = 0
+		rept 4
+			local CastLoop, SignIsDiffrent
+			mov ah, 1 SHL i
+			setreg SEQUENCER_CTRL, Plane_Mask ;; set the plane we draw to as plane i
+
+			mov dx,1 ; initial guess for the direction on the z axis
+			mov bx,(sWidth - 4+i)*4
+			mov di,sWidth SHR 2
+			CastLoop:
+				dec di
+
+				mov cx,[word high (SlopeTable + bx)]
+				xor cx,dx
+				jns SignIsDiffrent
+					neg dx ;; make sure the sign is diffrent
+				SignIsDiffrent:
+
+				push bx
+				fld [SlopeTable + bx]
+				shr bx,1 ;; the size of a word is half of the size of a double
+				mov bx,[DirTable + bx]
+				call CastRay
+
+				call DrawBlockColumn
+				pop bx
+			sub bx,4 * 4
+			or bx,bx ;; same as cmp bx,0
+			jge CastLoop
+			i = i + 1
+		endm
 
 		cli
 		mov ax,[PointerX]
@@ -343,7 +349,6 @@ main:
 
 		; load the speed of the player
 		fld [PlayerSpeed]
-
 		; test if we are moving in x and z
 		mov ah,al
 		shr ah,1
@@ -406,10 +411,12 @@ exit:
 	xor ax,ax
 	mov es,ax
 
-	; pop is not atomic
+	; pop is not atomic so we disable interrupts
+	; to make sure that there is no interrupt to unallocated
+	; regions of memory
 	cli
 	pop [word es:4*9+2] [word es:4*9]
-	sti
+	sti ; reenable interrupts
 
 	; remove FocalLen * HalfWallHeight from the fpu's stack
 	fstp ST(0)

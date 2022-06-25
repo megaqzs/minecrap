@@ -16,6 +16,7 @@ SCAN_Up_SHIFT equ 0aah
 
 CODESEG
 
+JumpMacCreate e
 proc mousehandler far
 	pushf
 	push bp
