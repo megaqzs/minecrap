@@ -1,20 +1,49 @@
-; vim style select: asmsyntax=tasm
-IDEAL
-MODEL SMALL
-STACK 100h
+; vim style select: asmsyntax=nasm
+org 0x7C00  ; add 0x7C00 (MBR loading address) to label addresses
+bits 16  ; use 16 bit instructions because of realmode
 
-include "lib/helper16.asm"
-include "lib/math.asm"
-include "lib/graphics.asm"
+%include "lib/helper16.asm"
+%include "lib/math.asm"
+%include "lib/graphics.asm"
 
-sWidth equ 320
-sHeight equ 200
+%include "evnthand.asm"
+%include "cast.asm"
 
 ; uncomment the following bit of code if you want to add logging
 ;GraphicsMode=0
 ;include "lib/logging.asm"
 
-DATASEG
+section code follows=entry
+section data follows=code
+
+section entry
+	cli
+	xor ax,ax
+	mov ss, ax   ; Set up stack, zero the stack segment
+	mov sp, 0x7BFF  ; Stack grows downwards, starting right before the code
+	sti
+
+	mov ax,(0x7C00+512) >> 4
+	mov es,ax
+	mov cx,2 ; the code is at the sector after this one
+	mov dh,0
+	mov bx,0
+	mov ax,0x200+ceildiv(dataseg_size+codeseg_size, 512) ; the number of sectors that are needed
+	int 13h
+	mov ax,3
+	int 10h
+	call main
+
+	; power off (or at least for qemu)
+	mov dx,0x604
+	mov ax,0x2000
+	out dx,ax
+	jmp $ ; loop forever if it failed
+
+times 510-($-$$) db 0   ; What is this unholy abomination???
+dw 0xAA55 ; the magic word
+
+section data
 ;                        screen width or height
 ; set FocalLen to:     ⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼
 ;                              2*tan(ɑ/2)
@@ -22,43 +51,34 @@ DATASEG
 FocalLen dd 250.0
 WallHalfHeight dd 0.5
 CollisionBoxHalfWidth dd 0.2 ; must be less than 0.5 because there will be gaps in the collision box above 0.5
-PlayerSpeed dd 0.1 ; blocks / frame (there are 60 frames per second if no frame is skipped)
+PlayerSpeed dd 0.1 ; blocks / frame
 MouseSensetivity dd 0.001 ; [MouseSensetivity] = half radians / mouse movment
 
 CameraX dd 1.0
 CameraZ dd 1.0
 
 ; in half radians (the pieriod is π instead of 2π)
-CameraRotY dd 0
 HalfHeight dd 0.5
 
-CameraRotYSin dd ?
-CameraRotYCos dd ?
+CameraRotYSin dd 0.0
+CameraRotYCos dd -1.0
 
-RotCos dd ?
-RotSin dd ?
+; 0 degrees
+RotCos dd 1.0
+RotSin dd 0.0
 
 ; an array of the slopes of the rays that are representing columns
-SlopeTable dd sWidth dup(?)
+SlopeTable times sWidth dd 0
 ; an array of the directions of the rays from before on the z axis
-DirTable dw sWidth dup(-1)
+DirTable times sWidth dw 1
 
 ; the vga page that is shown
 visiblepage dw VGASegment
 
-
-; bit field of player status:
-; [0: left, 1: right, 2: forward, 3: backward, 4: up, 5: down, 6: escape]
-kbstatus db 0000000b
-scancode db 0ffh
-
-PointerX dw 0
-PointerY dw 0
-
 ; each byte is a block on the map the player is in
 ; the color of the block is determined by the value of the byte in the pallete
 ; this map currently contains a maze
-map \
+map:
 db 20h,20h,20h,20h,20h,20h,20h,20h,27h,20h,20h,20h,20h,20h,20h,20h,20h,20h,20h,20h,20h,20h,20h,20h,20h,20h,20h,20h,20h,20h,20h,20h; 0
 db 20h,00h,20h,00h,20h,00h,20h,20h,00h,00h,00h,00h,00h,00h,00h,00h,00h,00h,00h,00h,00h,00h,00h,00h,00h,20h,00h,00h,00h,00h,00h,20h; |
 db 20h,00h,20h,00h,20h,00h,20h,20h,20h,20h,20h,20h,20h,20h,20h,20h,20h,20h,20h,20h,20h,20h,20h,20h,00h,20h,00h,20h,00h,20h,00h,20h; |
@@ -92,26 +112,58 @@ db 20h,00h,20h,20h,20h,20h,20h,00h,20h,20h,20h,20h,20h,00h,20h,20h,20h,20h,20h,0
 db 20h,00h,00h,00h,00h,00h,00h,00h,20h,00h,00h,00h,00h,00h,00h,00h,00h,00h,00h,00h,20h,00h,00h,00h,00h,00h,00h,00h,00h,00h,00h,20h; |
 db 20h,20h,20h,20h,20h,20h,20h,20h,20h,20h,20h,20h,20h,20h,20h,20h,20h,20h,20h,20h,20h,20h,20h,20h,20h,20h,20h,20h,20h,20h,20h,20h; 31
 ;   0------------------------------------------------------------X--------------------------------------------------------------31-🢒🢓
-CODESEG
 
-include "evnthand.asm"
-include "cast.asm"
+dataseg_size equ $-$$
+
+section code
+
+RotateCam:
+	; rotate the camera's slope table and direction table
+	mov di,sWidth*4
+	mov si,sWidth*2
+	RotLoop:
+		sub si,2 ; sizeof(word) = 2
+		sub di,4 ; sizeof(float) = 4
+		fild word [DirTable + si]
+		fld dword [SlopeTable + di]
+
+		cmacrot dword [RotSin], dword [RotCos]
+		fxch st1
+
+		fst dword [fputmp]
+		mov ax,word [DirTable + si]
+		xor ax,word [WordHigh(fputmp)]
+		jns NoChange
+			neg word [DirTable + si]
+		NoChange:
+
+		fabs
+		fdivp
+		fstp dword [SlopeTable + di]
+
+	or di,di ; the same as cmp bx,0
+	jg RotLoop
+
+
+	fld dword [CameraRotYSin]
+	fld dword [CameraRotYCos]
+	cmacrot dword [RotSin], dword [RotCos]
+	fstp dword [CameraRotYCos]
+	fstp dword [CameraRotYSin]
+	ret
 
 ; create long jump macros that are needed
-JumpMacCreate e,ge
 
 ; draws a column of a block on to the screen at di
 ; di = column, cl = color
-; ST(0) = z, ST(1) = x, ST(2) = focal length * half wall height
+; st0 = z, st1 = x, ST(2) = focal length * half wall height
 ; changes bx
-proc DrawBlockColumn
-	local @@
-
+DrawBlockColumn:
 	;; find column height
-	fsub [CameraZ]
-	fxch ST(1)
-	fsub [CameraX]
-	cmcrotz [CameraRotYSin], [CameraRotYCos]
+	fsub dword [CameraZ]
+	fxch st1
+	fsub dword [CameraX]
+	cmcrotz dword [CameraRotYSin],dword [CameraRotYCos]
 	fabs
 
 	; FocalLen is the distance between the focal point and the grid of 'pixels'
@@ -120,101 +172,146 @@ proc DrawBlockColumn
 	; on a line that intersects the origin and the point at (z,[HalfWallHeight])
 	; so we do [FocalLen]*[HalfWallHeight]/z because [HalfWallHeight]/z is the slope
 	; and [FocalLen] is the z which is the good old y = mx + b where b is zero
-	fdivr ST(0), ST(1) ;; [FocalLen]*[HalfWallHeight] is in ST(1)
-	fistp [word low fputmp]
+	fdivr st0, st1 ;; [FocalLen]*[HalfWallHeight] is in ST(1)
+	fistp word [WordLow(fputmp)]
 
-	mov bx,[word low fputmp]
+	mov bx,word [WordLow(fputmp)]
 	imin bx,sHeight/2,bx
-	mov [word low fputmp],bx
+	mov word [WordLow(fputmp)],bx
 
 	; bx *= sWidth >> 2
 	sal bx,2
-	add bx,[word low fputmp]
+	add bx,word [WordLow(fputmp)]
 	sal bx,4
 
 	sub di,bx
-	@@AboveLoop:
-		mov [byte es:di+sWidth*sHeight/2/4],cl
+	.AboveLoop:
+		mov byte [es:di+sWidth*sHeight/2/4],cl
 		add di,80
-	jl @@AboveLoop
+	jl .AboveLoop
 
 	add di,bx
 	sub di,80
-	@@BelowLoop:
-		mov [byte es:di+sWidth*sHeight/2/4],cl
+	.BelowLoop:
+		mov byte [es:di+sWidth*sHeight/2/4],cl
 		sub di,80
-	jge @@BelowLoop
-	ret
-endp DrawBlockColumn
+	jge .BelowLoop
+	retn
 
-macro GetCornerBlock x,z
-	fld [CameraX]
-	if x eq 1
-		fadd [CollisionBoxHalfWidth]
-	else
-		fsub [CollisionBoxHalfWidth]
-	endif
-	fistp [word low fputmp]
 
-	fld [CameraZ]
-	if z eq 1
-		fadd [CollisionBoxHalfWidth]
-	else
-		fsub [CollisionBoxHalfWidth]
-	endif
-	fistp [word high fputmp]
+; args: x, z
+%macro GetCornerBlock 2
+	fld dword [CameraX]
+	%if %1 == 1
+		fadd dword [CollisionBoxHalfWidth]
+	%else
+		fsub dword [CollisionBoxHalfWidth]
+	%endif
+	fistp word [WordLow(fputmp)]
 
-	mov bx,[word high fputmp]
+	fld dword [CameraZ]
+	%if %2 == 1
+		fadd dword [CollisionBoxHalfWidth]
+	%else
+		fsub dword [CollisionBoxHalfWidth]
+	%endif
+	fistp word [WordHigh(fputmp)]
+
+	mov bx,word [WordHigh(fputmp)]
 	shl bx,5
-	add bx,[word low fputmp]
-endm GetCornerBlock
+	add bx,word [WordLow(fputmp)]
+%endmacro
 
-proc RestoreIfColided
-		; check for collision on each corner of the hitbox and return ST(1) if collided
-		irp xDir,<1,-1>
-			irp zDir,<1,-1>
-				local NextCorner
+RestoreIfColided:
+		; check for collision on each corner of the hitbox and return st1 if collided
+		%assign i 0
+		%assign xDir -1
+		%rep 2
+			%assign zDir -1
+			%rep 2
 				GetCornerBlock xDir,zDir
-				cmp [map+bx],0
-				je NextCorner
-					fstp ST(0)
+				cmp byte [map+bx],0
+				je MKLabelI(.NextCorner,i)
+					fstp st0
 					ret
-				NextCorner:
-			endm
-		endm
-		; return ST(0) if no collision has occured
-		fstp ST(1)
-		ret
-endp RestoreIfColided
+				MKLabelI(.NextCorner,i):
+				%assign zDir 1
+				%assign i i+1
+			%endrep
+		%assign xDir 1
+		%endrep
+		; return st0 if no collision has occured
+		fstp st1
+		retn
 
 main:
-	mov ax, @data
-	mov ds,ax
-
 	; change keyboard handler
 	xor ax,ax
 	mov es,ax
+	mov ds,ax
+
+	mov ah,PS2WR_Bit
+	call PS2Wait
+	mov al,0xA8
+	out 0x64,al
+	call PS2rd
+
+	; change the compaq status byte
+	mov ah,PS2WR_Bit
+	call PS2Wait
+	mov al,0x20
+	out 0x64,al
+	call PS2rd
+	bts ax,1
+	btr ax,5
+	mov bl,al
+
+	; write the new compaq status byte
+	mov ah,PS2WR_Bit
+	call PS2Wait
+	mov al,0x60
+	out 0x64,al
+	call PS2Wait
+	mov al,bl
+	out 0x60,al
+	call PS2rd ; read optional ACK
+
+	; set defaults
+	mov ah,PS2WR_Bit
+	call PS2Wait
+	mov al,0xD4
+	out 0x64,al
+	mov ah,PS2WR_Bit
+	call PS2Wait
+	mov al,0xF6
+	out 0x60,al
+	call PS2rd
+
+	; enable packets
+	mov ah,PS2WR_Bit
+	call PS2Wait
+	mov al,0xD4
+	out 0x64,al
+	mov ah,PS2WR_Bit
+	call PS2Wait
+	mov al,0xF4
+	out 0x60,al
+	call PS2rd
+
+	mov word [PointerX],0
+	mov word [PointerY],0
+
 	cli
-	push [word es:4*9] [word es:4*9+2]
-	mov [word es:4*9+2], seg keyboardhandler
-	mov [word es:4*9], offset keyboardhandler
+	; save the current interrupt service rutines
+	push dword [es:IRQOffset(1)]
+	push dword [es:IRQOffset(12)]
+
+	; replace them with the ones from evnthand.asm
+	mov word [es:IRQOffset(1)+2],0
+	mov word [es:IRQOffset(1)],keyboardhandler
+	mov word [es:IRQOffset(11)+2],0
+	mov word [es:IRQOffset(11)],mousehandler
 	sti
-
-	; store mouse handler segment in es
-	mov ax,seg mousehandler
-	mov es,ax
-
-	; set mouse handler
-	mov bx,offset mousehandler
-	mov ax,0c207h
-	int 15h
-
-	; initialize mouse
-	mov bh,01h
-	mov ax,0c200h
-	int 15h
-	mov [PointerX],0
-	mov [PointerY],0
 
 	; change to graphical mode
 	mov ax,13h
@@ -222,204 +319,170 @@ main:
 	SetModeX
 
 	; prepare for display loop
-	; SHR 4 is there because the address is 20 bits wide and es is 16 bits wide and at the end of the address
-	mov ax,VGASegment + sWidth*sHeight/4 SHR 4
-	mov es,ax
 
+	; es is the page we currently draw to so it is the vga segment + the offset of the page in it
+	; right shift by 4 is there because the address is 20 bits wide and es is 16 bits wide and at the end of the address
+	mov ax,VGASegment + (320*200/4 >> 4)
+	mov es,ax
 	finit
-	fld [FocalLen]
+	fld dword [FocalLen]
 
 	; initialize slope table
-	mov bx,160*4
-	mov cx,-160
-	SlopeLoop:
+	mov bx,sWidth*4
+	mov cx,160
+	.SlopeLoop:
 		sub bx,4
-		inc cx
-		mov [word low fputmp],cx
-		fild [word low fputmp]
-		fdiv ST(0),ST(1)
-		fstp [fputmp]
-		mov ax,[word low fputmp]
-		mov [word low SlopeTable + bx + 160 * 4], ax
-		mov ax, [word high fputmp]
-		mov [word high SlopeTable + bx + 160 * 4], ax
-	cmp bx,-160*4
-	jne SLopeLoop
-	fmul [WallHalfHeight]
+		dec cx
+		mov word [WordLow(fputmp)],cx
+		fild word [WordLow(fputmp)]
+		fdiv st0,st1
+		fstp dword [fputmp]
+		mov ax,word [WordLow(fputmp)]
+		mov word [WordLow(SlopeTable + bx)], ax
+		mov ax, word [WordHigh(fputmp)]
+		mov word [WordHigh(SlopeTable + bx)], ax
+	cmp bx,0
+	jne .SlopeLoop
+	fmul dword [WallHalfHeight]
 
-	fld [CameraRotY]
-	sincos halfrad
-	fstp [CameraRotYSin]
-	fstp [CameraRotYCos]
+	call RotateCam
 	cld
 
-	FrameLoop:
+	.FrameLoop:
 		setreg SEQUENCER_CTRL, Plane_Mask, 1111b ; write to all four planes at once
 		xor di,di ; start from the start of the page
 		cmemset sWidth*sHeight/2/4,09h ; fill sky with blue
 		cmemset sWidth*sHeight/2/4,00h ; fill ground with black
 
 		; use seperate loops for diffrent planes in order to improve efficency
-		i = 0
-		rept 4
-			local CastLoop, SignIsDiffrent
-			mov ah, 1 SHL i
+		%assign i 0
+		%rep 4
+			mov ah, 1 << i
 			setreg SEQUENCER_CTRL, Plane_Mask ;; set the plane we draw to as plane i
 
 			mov dx,1 ; initial guess for the direction on the z axis
 			mov bx,(sWidth - 4+i)*4
-			mov di,sWidth SHR 2
-			CastLoop:
+			mov di,sWidth >> 2
+			MKLabelI(.CastLoop,i):
 				dec di
 
-				mov cx,[word high (SlopeTable + bx)]
+				mov cx,word [WordHigh(SlopeTable + bx)]
 				xor cx,dx
-				jns SignIsDiffrent
+				jns MKLabelI(.SignIsDiffrent,i)
 					neg dx ;; make sure the sign is diffrent
-				SignIsDiffrent:
+				MKLabelI(.SignIsDiffrent,i):
 
 				push bx
-				fld [SlopeTable + bx]
+				fld dword [SlopeTable + bx]
 				shr bx,1 ;; the size of a word is half of the size of a double
-				mov bx,[DirTable + bx]
+				mov bx,word [DirTable + bx]
 				call CastRay
 
 				call DrawBlockColumn
 				pop bx
 			sub bx,4 * 4
 			or bx,bx ;; same as cmp bx,0
-			jge CastLoop
-			i = i + 1
-		endm
+			jge MKLabelI(.CastLoop,i)
+			%assign i i+1
+		%endrep
 
 		cli
-		mov ax,[PointerX]
-		mov [PointerX],0
-		cmp ax,0
+		mov ax,word [PointerX]
+		mov word [PointerX],0
 		sti
-		lje NoRot
-		RotateCam:
-			mov [word low fputmp],ax
-			fild [word low fputmp]
-			fmul [MouseSensetivity]
+		cmp ax,0
+		je .NoRot
+			; calculate the sin and cos of the angle of rotation
+			mov word [WordLow(fputmp)],ax
+			fild word [WordLow(fputmp)]
+			fmul dword [MouseSensetivity]
 			sincos halfrad
-			fstp [RotSin]
-			fstp [RotCos]
+			fstp dword [RotSin]
+			fstp dword [RotCos]
 
-			; rotate the camera's slope table and direction table
-			mov di,sWidth*4
-			mov si,sWidth*2
-			RotLoop:
-				sub si,2 ; sizeof(word) = 2
-				sub di,4 ; sizeof(float) = 4
-				fild [DirTable + si]
-				fld [SlopeTable + di]
-
-				cmacrot [RotSin], [RotCos]
-				fxch ST(1)
-
-				fst [fputmp]
-				mov ax,[DirTable + si]
-				xor ax,[word high fputmp]
-				jns NoChange
-					neg [DirTable + si]
-				NoChange:
-
-				fabs
-				fdivp
-				fstp [SlopeTable + di]
-
-			or di,di ; the same as cmp bx,0
-			jg RotLoop
-
-
-			fld [CameraRotYSin]
-			fld [CameraRotYCos]
-			cmacrot [RotSin], [RotCos]
-			fstp [CameraRotYCos]
-			fstp [CameraRotYSin]
-		NoRot:
+			call RotateCam
+		.NoRot:
 
 		; check for events
-		mov al, [kbstatus]
+		mov al, byte [kbstatus]
 
 		; load (x,z) vector and initialize it to zero
 		fldz
 		fldz
 
 		; load the speed of the player
-		fld [PlayerSpeed]
+		fld dword [PlayerSpeed]
 		; test if we are moving in x and z
 		mov ah,al
 		shr ah,1
 		xor ah,al
 		test ah,101b ; zf is unset and pf is set only if (((move left) ⊕ (move right)) ∧ ((move backward) ⊕ (move forward)))
-		jz switch0
-		jnp switch0
+		jz .if0
+		jnp .if0
 			
 		; if we are moving in x and z then we need to multiply by 1/√2 because sin(45°)=1/√2 (and cos)
-		fmul [InvSqrt2]
+		fmul dword [InvSqrt2]
 
-		; ST(0): increment, ST(1): x, ST(2): z
-		switch0:
+		; st0: increment, st1: x, ST(2): z
+		.if0:
 		shr al,1
-		jnc case1
-			fadd ST(1), ST(0)
-		case1:
+		jnc .if1
+			fadd st1, st0
+		.if1:
 		shr al,1
-		jnc case2
-			fsub ST(1), ST(0)
-		case2:
+		jnc .if2
+			fsub st1, st0
+		.if2:
 		shr al,1
-		jnc case3
-			fsub ST(2), ST(0)
-		case3:
+		jnc .if3
+			fsub st2, st0
+		.if3:
 		shr al,1
-		jnc endswitch0
-			fadd ST(2), ST(0)
-		endswitch0:
+		jnc .endif3
+			fadd st2, st0
+		.endif3:
 
-		fstp ST(0) ; we dont need the corrected increment any more
+		fstp st0 ; we dont need the corrected increment any more
 
 		; rotate the velocity vector by the y axis rotation
-		cmacrot [CameraRotYSin] [CameraRotYCos]
+		cmacrot dword [CameraRotYSin], dword [CameraRotYCos]
 
 		; add the velocity vector to the location (since x=x₀+v*t and we are repeatedly adding the velocity over time which is equivilant to multiplacation)
-		fld [CameraX]
-		fadd ST(1),ST(0)
-		fxch ST(1)
-		fst [CameraX]
+		fld dword [CameraX]
+		fadd st1,st0
+		fxch st1
+		fst dword [CameraX]
 		call RestoreIfColided
-		fstp [CameraX]
+		fstp dword [CameraX]
 
-		fld [CameraZ]
-		fadd ST(1),ST(0)
-		fxch ST(1)
-		fst [CameraZ]
+		fld dword [CameraZ]
+		fadd st1,st0
+		fxch st1
+		fst dword [CameraZ]
 		call RestoreIfColided
-		fstp [CameraZ]
+		fstp dword [CameraZ]
 
 		shr al,3
 		jc exit
-		continue:
-			WaitDisplayEnable
-			flippage [visiblepage]
-			WaitVSync
-			jmp FrameLoop
+		.continue:
+			WaitDisplayEnable ; the start address is calculated at the end of a scanline which means there is plenty of time to set it
+			flippage word [visiblepage]
+			WaitVSync ; wait until the vga has had time to read the start address so that we dont draw into the current display
+			jmp .FrameLoop
 exit:
 	; restore keyboard handler
 	xor ax,ax
 	mov es,ax
 
-	; pop is not atomic so we disable interrupts
-	; to make sure that there is no interrupt to unallocated
-	; regions of memory
+	; we disable interrupts to make sure that there
+	; is no interrupt to unallocated regions of memory
 	cli
-	pop [word es:4*9+2] [word es:4*9]
+	pop dword [es:IRQOffset(12)]
+	pop dword [es:IRQOffset(1)]
 	sti ; reenable interrupts
 
 	; remove FocalLen * HalfWallHeight from the fpu's stack
-	fstp ST(0)
+	fstp st0
 
 	; disable mouse
 	mov bh,00h
@@ -435,5 +498,5 @@ exit:
 	mov ax,3h
 	int 10h
 
-	exitcode 0
-END main
+	ret
+codeseg_size equ $-$$

@@ -1,139 +1,105 @@
-; asmsyntax=tasm
+; asmsyntax=nasm
 
-TRUE equ 1
-FALSE equ -1
+%idefine TRUE 1
+%idefine FALSE 0
 
-CODESEG
+%define WordLow(address) (0*2 + (address))
+%define WordHigh(address) (1*2 + (address))
+%define ByteLow(address) (0*1 + (address))
+%define ByteHigh(address) (1*1 + (address))
 
-macro lseek
-	mov ah, 42h
-	int 21h
-endm lseek
+%define IRQOffset(IRQ) (4*((IRQ) > 7 ? (0x70 + (IRQ) - 7) : (0x8 + (IRQ))))
+%define MKLabelI(label,i) label %+ i ; make a label with the index i for rep loops
 
-macro open name
-	local NoOpenErr
-	mov ah, 3Dh
-	xor al, al
-	lea dx, name
-	int 21h
-	mov bx,ax
-	jnc NoOpenErr
-	lea dx, [ErrorMsg]
-	mov ah, 9h
-	int 21h
-	NoOpenErr:
-endm open
+; this works because a and b are integers meaning that 1 doesn't need to be infinitesimally small
+%define ceildiv(a,b) (((a) + (b) - 1) / (b))
 
-macro close
-	mov ah,3eh
-	int 21h
-endm close
-
-macro memset Size, value
-	mov ax, value OR (value SHL 8)
+; args size, value
+%macro memset 2
+	mov ax, %1 | (%2 << 8)
 	shr cx,1
 	rep stosw
 	adc cx,0
 	rep stosb
-endm memset
+%endmacro memset
 
 ; set Size values in es:di to Value
 ; changes ax cx di df
-macro cmemset Size, Value
-	local id
-	if Size eq 0
-		goto exitm
-	endif
+; args: size, value
+%macro cmemset 2
+	%if %1 != 0
+		cld
+		mov al,%2
 
-	cld
-	mov al,Value
+		%if (%1 % 2) == 1
+			stosb
+		%endif
 
-	if (Size and 1) eq 1
-		stosb
-		if (Size / 2) eq 0
-			goto exitm
-		endif
-	endif
+		%if %1 > 1
+			mov ah,al
+			mov cx, %1 / 2
+			rep stosw
+		%endif
+	%endif
+%endmacro cmemset
 
-	mov ah,al
-	mov cx, Size / 2
-	rep stosw
-	:exitm
-endm cmemset
-
-macro memcpy
+%macro memcpy 0
 	shr cx,1
 	rep movsw
 	adc cx,0
 	rep movsb
-endm memcpy
+%endmacro memcpy
 
 ; same as memcpy but only works on constant sizes and faster
 ; changes cx, df
-macro cmemcpy Size
-	if (Size and 1) eq 1
-		movsb
-	endif
-	if (Size / 2) eq 0
-		goto exitm
-	endif
+%macro cmemcpy 1
+	%if (%1 % 2) == 1
+		movsb ; write a byte if the size is odd in order to make it even
+	%endif
 
-	mov cx, Size / 2
-	rep movsw
-	:exitm
-endm cmemcpy
+	%if (%1 / 2) != 0
+		mov cx, %1 / 2
+		rep movsw ; write the rest of the bytes as words
+	%endif
+%endmacro cmemcpy
 
-; create jump macros based on their condition code for example for je it will be e
-; however it also creates the negatives of those because it can't deal with negatives like ne
-macro JumpMacCreate c1,c2,c3,c4,c5,c6,c7,c8,c9,c10,c11,c12,c13,c14,c15,c16
-	local NegativeCondition,NPos
-	ifnb <c1>
-		macro lj&c1 addr
-			local mexit
-			jn&c1 mexit
-				jmp addr
-			mexit:
-		endm lj&c1
+%imacro ljcc 2
+	j%-1 %%skip
+		jmp %2
+	%%skip:
+%endmacro ljcc
 
-		macro ljn&c1 addr
-			local mexit
-			j&c1 mexit
-				jmp addr
-			mexit:
-		endm ljn&c1
-		JumpMacCreate c2,c3,c4,c5,c6,c7,c8,c9,c10,c11,c12,c13,c14,c15,c16	
-	endif
-endm JumpMacCreate
-
-macro dwrol reg1, reg2, count
+; args: reg1, reg2, count
+%macro dwrol 3
 	clc
-	rept count
-		rcl reg1,1
-		rcl reg2,1
-		adc reg1,0
-	endm
-endm dwrol
+	%rep %3
+		rcl %1,1
+		rcl %2,1
+		adc %1,0
+	%endrep
+%endmacro dwrol
 
-macro dwror reg1, reg2, count
+; args: reg1, reg2, count
+%macro dwror 3
 	clc
-	rept count
-		rcr reg2,1
-		rcr reg1,1
-		rcl reg2,1
-		ror reg2,1
-	endm
-endm dwrol
+	%rep %3
+		rcr %2,1
+		rcr %1,1
+		rcl %2,1
+		ror %2,1
+	%endrep
+%endmacro dwrol
 
-macro rpush a1,a2,a3,a4,a5,a6,a7,a8,a9,a10,a11,a12,a13,a14,a15
-	ifnb <a1>
-		rpush a2,a3,a4,a5,a6,a7,a8,a9,a10,a11,a12,a13,a14,a15
-		push a1
-	endif
-endm rpush
+%macro rpush 1-*
+	%rep %0
+		%rotate -1
+		push %1
+	%endrep
+%endmacro
 
-macro rpop a1,a2,a3,a4,a5,a6,a7,a8,a9,a10,a11,a12,a13,a14,a15
-	ifnb <a1>
-		rpop a2,a3,a4,a5,a6,a7,a8,a9,a10,a11,a12,a13,a14,a15
-		pop a1
-	endif
-endm rpop
+%macro rpop 1-*
+	%rep %0
+		%rotate -1
+		pop %1
+	%endrep
+%endmacro
